@@ -119,6 +119,18 @@ export default function Orders() {
     setIsProcessingBulk(true);
     try {
       if (status === 'packaging') {
+          // Verify all selected orders are new and packagable
+          const invalidOrders = selectedOrders.filter(id => {
+              const order = orders.find(o => o.id === id);
+              return !order || !order.isPackagable || order.internal_status !== 'new';
+          });
+          
+          if (invalidOrders.length > 0) {
+              toast.error(`Cannot package ${invalidOrders.length} order(s). They must be "new" and have sufficient stock.`);
+              setIsProcessingBulk(false);
+              return;
+          }
+
           const successfulIds = [];
           for (const id of selectedOrders) {
              const deduction = await deductStockForOrder(id);
@@ -603,13 +615,15 @@ export default function Orders() {
                   )}
                 >
                   {isProcessingBulk ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className="h-4 w-4 animate-spin -ml-1 mr-1.5" />
                   ) : (
                     <>
-                      {action.label === 'Set Ready' && <CheckCircle2 className="h-3 w-3 mr-1.5 hidden sm:inline" />}
-                      {action.label}
+                      {action.label === 'Set Ready' && <CheckCircle2 className="h-4 w-4 mr-1.5 hidden sm:inline" />}
+                      {action.label === 'Start Packing' && <Package className="h-4 w-4 mr-1.5 hidden sm:inline" />}
+                      {action.label === 'Mark Shipped' && <Truck className="h-4 w-4 mr-1.5 hidden sm:inline" />}
                     </>
                   )}
+                  <span>{isProcessingBulk && action.val === 'packaging' ? 'Processing...' : action.label}</span>
                 </Button>
               ))}
               

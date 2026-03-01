@@ -18,7 +18,8 @@ export type OrderStatus =
   | 'shipped' 
   | 'out_for_delivery' 
   | 'delivered' 
-  | 'cancelled';
+  | 'cancelled'
+  | 'blocked';
 
 export interface User {
   id: string;
@@ -64,6 +65,9 @@ export interface Order {
   total_price: number;
   subtotal_price: number;
   total_tax: number;
+  delivery_method?: string;
+  delivery_price?: number;
+  payment_method?: string;
   fulfillment_status: string | null; // 'fulfilled', 'partial', etc.
   financial_status: string; // 'paid', 'pending', etc.
   internal_status: OrderStatus;

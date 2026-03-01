@@ -436,6 +436,12 @@ export default function OrderDetail() {
                         }
                     }
                 }
+                
+                // Explicitly disable packaging for blocked orders or orders that have already passed the 'new' stage
+                if (order.internal_status === 'blocked' || order.internal_status !== 'new') {
+                    isPackagable = false;
+                }
+                
                 return <OrderWorkflow order={order} onOrderUpdated={refreshOrder} isPackagable={isPackagable} />;
             })()}
             {/* OrderApproval is now integrated into OrderWorkflow, we can remove this or keep it if separate? 
@@ -528,6 +534,40 @@ export default function OrderDetail() {
                 </CardContent>
             </Card>
             
+            {(order.delivery_method || order.payment_method) && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Delivery & Payment</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        {order.delivery_method && (
+                            <div>
+                                <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Delivery Method</div>
+                                <div className="flex items-center justify-between border-l-2 border-muted pl-3 py-1">
+                                    <span className="font-medium">{order.delivery_method}</span>
+                                    {order.delivery_price !== undefined && order.delivery_price > 0 ? (
+                                        <Badge variant="secondary" className="font-mono">
+                                            {new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency }).format(order.delivery_price)}
+                                        </Badge>
+                                    ) : (
+                                        <Badge variant="outline" className="text-emerald-500 border-emerald-500/30">Free</Badge>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                        
+                        {order.payment_method && (
+                            <div>
+                                <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Payment Method</div>
+                                <div className="flex items-center gap-2 border-l-2 border-muted pl-3 py-1">
+                                    <span className="font-medium capitalize">{order.payment_method}</span>
+                                </div>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
+
             {(order.note || order.tags || order.tracking_number) && (
                 <Card>
                     <CardHeader>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useDeliveryCompanies } from "@/hooks/use-delivery-companies";
 import { 
   Truck, 
@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useFleetrunnr } from "@/hooks/use-fleetrunnr";
 import {
   Table,
   TableBody,
@@ -45,6 +46,22 @@ export default function Delivery() {
   const [selectedProvider, setSelectedProvider] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [companyToDelete, setCompanyToDelete] = useState<string | null>(null);
+  const { syncDeliveryStatuses, isSyncing } = useFleetrunnr();
+
+  useEffect(() => {
+     // Automatically trigger delivery sync on mount
+     const autoSync = async () => {
+         try {
+             const res = await syncDeliveryStatuses();
+             if (res.updated > 0 || res.failed > 0) {
+                 toast.success(`Auto-sync complete. Updated: ${res.updated}, Failed: ${res.failed}`);
+             }
+         } catch(err) {
+             console.error("Auto-sync failed on mount:", err);
+         }
+     }
+     autoSync();
+  }, []);
 
   const handleAddMapping = async () => {
     if (!newTag || !selectedProvider) return;
@@ -76,9 +93,16 @@ export default function Delivery() {
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div className="space-y-1">
-          <h1 className="text-4xl font-black tracking-tighter text-foreground flex items-center gap-3">
-            <Truck className="h-10 w-10 text-primary" /> Delivery & Logistics
-          </h1>
+          <div className="flex items-center gap-4">
+              <h1 className="text-4xl font-black tracking-tighter text-foreground flex items-center gap-3">
+                <Truck className="h-10 w-10 text-primary" /> Delivery & Logistics
+              </h1>
+              {isSyncing && (
+                  <Badge variant="outline" className="h-6 font-mono text-[10px] uppercase tracking-widest text-muted-foreground border-primary/20 bg-primary/5 animate-pulse flex items-center gap-1.5">
+                      <Truck className="h-3 w-3" /> Syncing Statuses...
+                  </Badge>
+              )}
+          </div>
           <p className="text-muted-foreground font-medium text-lg">
             Automate carrier assignment and manage shipping provider integrations.
           </p>

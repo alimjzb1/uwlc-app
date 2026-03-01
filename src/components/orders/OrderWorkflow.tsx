@@ -458,11 +458,11 @@ export function OrderWorkflow({ order, onOrderUpdated, isPackagable = true }: Or
 
                     <CardFooter className="flex gap-2 justify-end bg-muted/50 pt-6 rounded-b-lg">
                         <Button variant="outline" onClick={() => confirmAdminAction(false)} disabled={processingAction} className="border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/50">
-                            <XCircle className="mr-2 h-4 w-4" />
+                            {processingAction && pendingAdminAction?.type === 'reject' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
                             Reject
                         </Button>
                         <Button onClick={() => confirmAdminAction(true)} disabled={processingAction} className="bg-green-600 hover:bg-green-700 text-white">
-                            <ShieldCheck className="mr-2 h-4 w-4" />
+                            {processingAction && pendingAdminAction?.type === 'approve' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
                             Approve
                         </Button>
                     </CardFooter>
@@ -491,8 +491,10 @@ export function OrderWorkflow({ order, onOrderUpdated, isPackagable = true }: Or
                             <AlertDialogCancel>Cancel</AlertDialogCancel>
                             <AlertDialogAction 
                                 onClick={executeAdminAction}
+                                disabled={processingAction}
                                 className={pendingAdminAction?.type === 'approve' ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"}
                             >
+                                {processingAction && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                 {pendingAdminAction?.type === 'approve' ? 'Confirm Approval' : (pendingAdminAction?.type === 'override' ? 'Confirm Override' : 'Confirm Rejection')}
                             </AlertDialogAction>
                         </AlertDialogFooter>

@@ -103,7 +103,7 @@ export function useShopifySync() {
 
       const shopifyOrders = await fetchAllPages('orders', 'orders', {
         status: 'any',
-        fields: 'id,name,email,currency,total_price,subtotal_price,total_tax,fulfillment_status,financial_status,created_at,updated_at,note,shipping_address,billing_address,line_items,customer,tags,fulfillments',
+        fields: 'id,name,email,currency,total_price,subtotal_price,total_tax,fulfillment_status,financial_status,created_at,updated_at,note,shipping_address,billing_address,line_items,customer,tags,fulfillments,shipping_lines,payment_gateway_names',
       });
 
       if (shopifyOrders.length === 0) return result;
@@ -164,6 +164,9 @@ export function useShopifySync() {
             tags: shopifyOrder.tags ? shopifyOrder.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
             tracking_number: trackingNumber,
             tracking_url: trackingUrl,
+            delivery_method: shopifyOrder.shipping_lines?.[0]?.title || null,
+            delivery_price: shopifyOrder.shipping_lines?.[0]?.price ? parseFloat(shopifyOrder.shipping_lines[0].price) : 0,
+            payment_method: shopifyOrder.payment_gateway_names?.length ? shopifyOrder.payment_gateway_names.join(', ') : null,
             // Use Shopify's original timestamps
             created_at: shopifyOrder.created_at,
             updated_at: shopifyOrder.updated_at,
@@ -179,7 +182,8 @@ export function useShopifySync() {
               'email', 'total_price', 'subtotal_price', 'total_tax',
               'fulfillment_status', 'financial_status', 'note',
               'shipping_address', 'billing_address', 'tags',
-              'tracking_number', 'tracking_url', 'internal_status'
+              'tracking_number', 'tracking_url', 'internal_status',
+              'delivery_method', 'delivery_price', 'payment_method'
             ]);
 
             if (diff) {
@@ -250,7 +254,7 @@ export function useShopifySync() {
       const response = await callShopifyProxy('orders', {
         status: 'any',
         limit: Math.min(limit, 250),
-        fields: 'id,name,email,currency,total_price,subtotal_price,total_tax,fulfillment_status,financial_status,created_at,updated_at,note,shipping_address,billing_address,line_items,customer,tags,fulfillments',
+        fields: 'id,name,email,currency,total_price,subtotal_price,total_tax,fulfillment_status,financial_status,created_at,updated_at,note,shipping_address,billing_address,line_items,customer,tags,fulfillments,shipping_lines,payment_gateway_names',
       });
 
       const shopifyOrders = response?.data?.orders || [];
@@ -302,6 +306,9 @@ export function useShopifySync() {
           tags: shopifyOrder.tags ? shopifyOrder.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
           tracking_number: trackingNumber,
           tracking_url: trackingUrl,
+          delivery_method: shopifyOrder.shipping_lines?.[0]?.title || null,
+          delivery_price: shopifyOrder.shipping_lines?.[0]?.price ? parseFloat(shopifyOrder.shipping_lines[0].price) : 0,
+          payment_method: shopifyOrder.payment_gateway_names?.length ? shopifyOrder.payment_gateway_names.join(', ') : null,
           created_at: shopifyOrder.created_at,
           updated_at: shopifyOrder.updated_at,
         };
@@ -315,7 +322,8 @@ export function useShopifySync() {
             'email', 'total_price', 'subtotal_price', 'total_tax',
             'fulfillment_status', 'financial_status', 'note',
             'shipping_address', 'billing_address', 'tags',
-            'tracking_number', 'tracking_url', 'internal_status'
+            'tracking_number', 'tracking_url', 'internal_status',
+            'delivery_method', 'delivery_price', 'payment_method'
           ]);
 
           if (diff) {
