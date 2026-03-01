@@ -15,6 +15,7 @@ import { Layout } from './components/layout/Layout';
 import Locations from './pages/Locations';
 import LocationDetail from './pages/LocationDetail';
 import Integrations from './pages/Integrations';
+import Users from './pages/Users';
 
 
 import { ThemeProvider } from "@/components/theme-provider"
@@ -31,17 +32,18 @@ function App() {
           <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/inventory" element={<Inventory />} />
-            <Route path="/inventory/:id" element={<ProductDetail />} />
-            <Route path="/inventory/shopify/:id" element={<ShopifyProductDetail />} />
-            <Route path="/orders" element={<Orders />} />
-            <Route path="/orders/:id" element={<OrderDetail />} />
-            <Route path="/customers" element={<Customers />} />
-            <Route path="/customers/:id" element={<CustomerDetail />} />
-            <Route path="/delivery" element={<Delivery />} />
+            <Route path="/inventory" element={<ProtectedRoute allowedRoles={['admin', 'employee', 'viewer']}><Inventory /></ProtectedRoute>} />
+            <Route path="/inventory/:id" element={<ProtectedRoute allowedRoles={['admin', 'employee', 'viewer']}><ProductDetail /></ProtectedRoute>} />
+            <Route path="/inventory/shopify/:id" element={<ProtectedRoute allowedRoles={['admin', 'employee', 'viewer']}><ShopifyProductDetail /></ProtectedRoute>} />
+            <Route path="/orders" element={<ProtectedRoute allowedRoles={['admin', 'employee', 'viewer']}><Orders /></ProtectedRoute>} />
+            <Route path="/orders/:id" element={<ProtectedRoute allowedRoles={['admin', 'employee', 'viewer']}><OrderDetail /></ProtectedRoute>} />
+            <Route path="/customers" element={<ProtectedRoute allowedRoles={['admin', 'employee', 'viewer']}><Customers /></ProtectedRoute>} />
+            <Route path="/customers/:id" element={<ProtectedRoute allowedRoles={['admin', 'employee', 'viewer']}><CustomerDetail /></ProtectedRoute>} />
+            <Route path="/delivery" element={<ProtectedRoute allowedRoles={['admin', 'employee', 'viewer']}><Delivery /></ProtectedRoute>} />
             <Route path="/locations" element={<ProtectedRoute requireAdmin><Locations /></ProtectedRoute>} />
             <Route path="/locations/:id" element={<ProtectedRoute requireAdmin><LocationDetail /></ProtectedRoute>} />
             <Route path="/integrations" element={<ProtectedRoute requireAdmin><Integrations /></ProtectedRoute>} />
+            <Route path="/users" element={<ProtectedRoute requireAdmin><Users /></ProtectedRoute>} />
           </Route>
 
         </Routes>

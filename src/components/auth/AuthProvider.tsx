@@ -81,12 +81,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const profile = await fetchProfile(session.user.id);
         
         if (mounted) {
+          // Properly type and assign the profile so it's accessible as user.profile.role
           setUser({ ...session.user, profile } as unknown as User);
           clearTimeout(emergencyTimeout);
           setLoading(false);
         }
       } else if (mounted) {
-        // Already fetched or fetching for this user ID
+        // Already fetched or fetching for this user ID, but we shouldn't wipe the user.
+        // Keep the existing user (which has the profile) or just update session details 
+        // without wiping the profile.
+        setUser(prev => prev ? { ...session.user, profile: prev.profile } as unknown as User : null);
         setLoading(false);
       }
     });
@@ -127,7 +131,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const hasPermission = useCallback((module: string, action: string): boolean => {
     if (isAdmin) return true;
-    const modulePermissions = user?.profile?.permissions?.[module] || [];
+    const permissions = user?.profile?.permissions as any;
+    
+    // Support generic array of permissions, e.g. ["all"]
+    if (Array.isArray(permissions) && permissions.includes('all')) return true;
+    
+    // Support module-specific permissions, e.g. { "inventory": ["read", "write"] }
+    const modulePermissions = permissions?.[module] || [];
     return modulePermissions.includes('all') || modulePermissions.includes(action);
   }, [isAdmin, user]);
 
