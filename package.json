@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "prebuild": "bun -e \"import { rmSync } from 'node:fs'; const dirs=['node_modules/.vite-temp', 'dist']; dirs.forEach(d => { try { rmSync(d, { recursive: true, force: true }); } catch (e) {} })\"",
-    "build": "bunx tsc -b && vite build",
+    "build": "bunx tsc -b && bunx vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
