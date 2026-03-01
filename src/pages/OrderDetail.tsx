@@ -37,6 +37,7 @@ import { OrderWorkflow } from "@/components/orders/OrderWorkflow";
 import { supabase } from "@/lib/supabase";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { useShopifySettings } from "@/hooks/use-shopify-settings";
+import { useOrderAnalytics } from "@/hooks/use-orders";
 import type { Order } from "@/types";
 
 
@@ -52,6 +53,7 @@ export default function OrderDetail() {
    const [productLinks, setProductLinks] = useState<Record<string, { id: string, qtyPerUnit: number }[]>>({}); 
    const [internalInventory, setInternalInventory] = useState<Record<string, { id: string, quantity: number, sku?: string }>>({}); 
    const [skuToId, setSkuToId] = useState<Record<string, string>>({});
+   const { blockedOrders, loading: analyticsLoading } = useOrderAnalytics();
 
   useEffect(() => {
     if (id) {
@@ -412,7 +414,11 @@ export default function OrderDetail() {
 
             {(() => {
                 let isPackagable = true;
-                if (order.items) {
+                const blockedDetails = blockedOrders.find(b => b.orderId === order.id);
+
+                if (blockedDetails) {
+                    isPackagable = false;
+                } else if (order.items) {
                     for (const item of order.items) {
                         const shopifyVariantId = item.shopify_variant_id || null;
                         const sku = item.sku;
@@ -438,11 +444,26 @@ export default function OrderDetail() {
                 }
                 
                 // Explicitly disable packaging for blocked orders or orders that have already passed the 'new' stage
-                if (order.internal_status === 'blocked' || order.internal_status !== 'new') {
+                if (order.internal_status === 'blocked' || order.internal_status !== 'new' || analyticsLoading) {
                     isPackagable = false;
                 }
                 
-                return <OrderWorkflow order={order} onOrderUpdated={refreshOrder} isPackagable={isPackagable} />;
+                return (
+                    <div className="flex flex-col gap-4">
+                        {blockedDetails && (
+                            <div className="flex flex-col gap-2 text-destructive bg-destructive/5 p-4 rounded-lg border border-destructive/30">
+                                <span className="font-bold text-sm">⚠️ This order is globally blocked.</span>
+                                <span className="text-xs opacity-90">Older unfulfilled orders have reserved the existing inventory. The following items must be replenished before this order can be packaged:</span>
+                                <ul className="list-disc list-inside text-xs font-mono ml-2 mt-1">
+                                    {blockedDetails.missing.map((m, idx) => (
+                                        <li key={idx}><span className="font-bold">{m.name}</span> ({m.qty} needed)</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                        <OrderWorkflow order={order} onOrderUpdated={refreshOrder} isPackagable={isPackagable} />
+                    </div>
+                );
             })()}
             {/* OrderApproval is now integrated into OrderWorkflow, we can remove this or keep it if separate? 
                 The user asked to add approval logic. I added it to OrderWorkflow.
