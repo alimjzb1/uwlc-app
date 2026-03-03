@@ -15,31 +15,8 @@ serve(async (req: Request) => {
   }
 
   try {
-    // @ts-ignore
-    const supabaseClient = createClient(
-      // @ts-ignore
-      Deno.env.get('SUPABASE_URL') ?? '',
-      // @ts-ignore
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
-    )
-
-    // Check if the user executing the function is an admin
-    const {
-      data: { user },
-    } = await supabaseClient.auth.getUser()
-
-    if (!user) throw new Error('Not authenticated')
-
-    const { data: profile, error: profileError } = await supabaseClient
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (profileError || profile?.role !== 'admin') {
-      throw new Error('Not authorized as admin')
-    }
+    const authHeader = req.headers.get('Authorization')
+    const token = authHeader?.replace('Bearer ', '')
 
     // @ts-ignore
     const supabaseAdmin = createClient(
@@ -49,19 +26,39 @@ serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    const { action, email, role, userId, name, permissions } = await req.json()
+    // Verify the caller's identity using their JWT token
+    if (!token) throw new Error('No authorization token provided')
+    
+    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token)
 
-    if (action === 'invite') {
-      // Invite user
-      const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email)
+    if (userError || !user) throw new Error('Not authenticated')
+
+    // Check if the user is an admin
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (profileError || profile?.role !== 'admin') {
+      throw new Error('Not authorized as admin')
+    }
+
+    const { action, email, password, role, userId, name, permissions } = await req.json()
+
+    if (action === 'create') {
+      // Create user with password
+      const { data, error } = await supabaseAdmin.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { full_name: name || email.split('@')[0] }
+      })
       
       if (error) throw error
 
-      // Note: we'll let handle_new_user trigger create the profile implicitly first, 
-      // but if we need to set a specific role upfront we can update the profile post-creation.
-      // Wait for profile to be created via trigger (small delay maybe needed, or update immediately if exists)
+      // Update the profile with role and permissions
       if (data.user?.id) {
-          // Give the trigger a moment to run
           await new Promise(resolve => setTimeout(resolve, 500));
           
           await supabaseAdmin
@@ -75,6 +72,29 @@ serve(async (req: Request) => {
       }
 
       return new Response(JSON.stringify({ user: data.user }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      })
+    } else if (action === 'reset-password') {
+      // Send password reset email
+      // @ts-ignore
+      const siteUrl = Deno.env.get('SITE_URL') || 'http://localhost:5174'
+      const { error } = await supabaseAdmin.auth.admin.generateLink({
+        type: 'recovery',
+        email,
+        options: {
+          redirectTo: `${siteUrl}/reset-password`,
+        }
+      })
+      
+      if (error) throw error
+
+      // Also send via the standard reset flow so the user gets an email
+      await supabaseAdmin.auth.resetPasswordForEmail(email, {
+        redirectTo: `${siteUrl}/reset-password`,
+      })
+
+      return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
       })

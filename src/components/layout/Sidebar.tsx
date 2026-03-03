@@ -1,11 +1,11 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, ShoppingCart, LogOut, Box, Users, Truck, Building2, Cog } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, LogOut, Box, Users, Truck, Building2, Cog, Settings } from 'lucide-react';
 import { useAuth } from '@/components/auth/AuthContext';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-export function Sidebar() {
-  const { signOut, user, isAdmin } = useAuth();
+export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+  const { signOut, user, isAdmin, loading } = useAuth();
 
   const links = [
     { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'employee', 'viewer', 'user'] },
@@ -16,6 +16,7 @@ export function Sidebar() {
     { to: '/locations', label: 'Locations', icon: Building2, roles: ['admin'] },
     { to: '/users', label: 'Users', icon: Users, roles: ['admin'] },
     { to: '/integrations', label: 'Integrations', icon: Cog, roles: ['admin'] },
+    { to: '/settings', label: 'Settings', icon: Settings, roles: ['admin', 'employee', 'viewer', 'user'] },
   ];
 
   return (
@@ -24,7 +25,11 @@ export function Sidebar() {
         <h1 className="text-2xl font-bold">UMLC App</h1>
       </div>
       <nav className="flex-1 px-4 space-y-2">
-        {links.map((link) => {
+        {loading ? (
+          <div className="flex justify-center p-4">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-r-transparent" />
+          </div>
+        ) : links.map((link) => {
           const userRole = user?.profile?.role || 'user';
           // If the profile fetch failed but AuthProvider guarantees they're a master admin, let them see admin links
           if (!link.roles.includes(userRole) && (!isAdmin || !link.roles.includes('admin'))) return null;
@@ -39,6 +44,7 @@ export function Sidebar() {
                   isActive ? "bg-primary text-primary-foreground hover:bg-primary/90" : "text-muted-foreground"
                 )
               }
+              onClick={onNavigate}
             >
               <link.icon className="h-4 w-4" />
               {link.label}

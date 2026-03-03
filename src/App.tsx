@@ -16,6 +16,8 @@ import Locations from './pages/Locations';
 import LocationDetail from './pages/LocationDetail';
 import Integrations from './pages/Integrations';
 import Users from './pages/Users';
+import Settings from './pages/Settings';
+import ResetPassword from './pages/ResetPassword';
 
 
 import { ThemeProvider } from "@/components/theme-provider"
@@ -29,6 +31,7 @@ function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
@@ -44,6 +47,7 @@ function App() {
             <Route path="/locations/:id" element={<ProtectedRoute requireAdmin><LocationDetail /></ProtectedRoute>} />
             <Route path="/integrations" element={<ProtectedRoute requireAdmin><Integrations /></ProtectedRoute>} />
             <Route path="/users" element={<ProtectedRoute requireAdmin><Users /></ProtectedRoute>} />
+            <Route path="/settings" element={<Settings />} />
           </Route>
 
         </Routes>

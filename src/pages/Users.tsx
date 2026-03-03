@@ -32,51 +32,55 @@ import {
 } from '@/components/ui/dialog';
 import { useAuth } from '@/components/auth/AuthContext';
 import { Badge } from '@/components/ui/badge';
-import { Trash2, UserPlus, Key } from 'lucide-react';
+import { Trash2, UserPlus, Key, RotateCcw } from 'lucide-react';
 
 export default function Users() {
   const { user: currentUser } = useAuth();
-  const { users, loading, updateUserRole, inviteUser, deleteUser, updateUserPermissions } = useUsers();
+  const { users, loading, updateUserRole, createUser, deleteUser, updateUserPermissions, resetPassword } = useUsers();
   
   const [isPermissionsOpen, setIsPermissionsOpen] = useState(false);
   const [editingPermissionsUser, setEditingPermissionsUser] = useState<any>(null);
   
-  const [isInviteOpen, setIsInviteOpen] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteName, setInviteName] = useState('');
-  const [inviteRole, setInviteRole] = useState<UserRole>('employee');
-  const [invitePermissions, setInvitePermissions] = useState<Record<string, string[]>>({});
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [createEmail, setCreateEmail] = useState('');
+  const [createName, setCreateName] = useState('');
+  const [createPassword, setCreatePassword] = useState('');
+  const [createRole, setCreateRole] = useState<UserRole>('employee');
+  const [createPermissions, setCreatePermissions] = useState<Record<string, string[]>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleInviteSubmit = async (e: React.FormEvent) => {
+  const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (createPassword.length < 6) {
+      toast.error('Password must be at least 6 characters');
+      return;
+    }
     setIsSubmitting(true);
-    // Determine permissions payload: Viewers get strictly read-only, Admins get null/all natively, else specific
-    let finalPerms: any = invitePermissions;
-    if (inviteRole === 'admin') finalPerms = ["all"];
-    if (inviteRole === 'viewer') {
-      finalPerms = Object.keys(invitePermissions).reduce((acc, mod) => {
-        if (invitePermissions[mod]?.length > 0) acc[mod] = ['read'];
+    let finalPerms: any = createPermissions;
+    if (createRole === 'admin') finalPerms = ["all"];
+    if (createRole === 'viewer') {
+      finalPerms = Object.keys(createPermissions).reduce((acc, mod) => {
+        if (createPermissions[mod]?.length > 0) acc[mod] = ['read'];
         return acc;
       }, {} as any);
     }
     
-    // In a real app we'd pass permissions to inviteUser edge function
-    // For now we assume inviteUser just sets the role, we might need to modify edge function or profile directly later
-    // As a workaround, we will call updateUserPermissions immediately after if we have the new user ID
-    
-    // NOTE: Edge function 'manage-users' currently only accepts email, name, role. 
-    // It creates them in auth.users and profiles. We'll add permissions into the edge function later if needed,
-    // but for now let's just use the hook.
-    const success = await inviteUser(inviteEmail, inviteName, inviteRole, finalPerms);
+    const success = await createUser(createEmail, createPassword, createName, createRole, finalPerms);
     if (success) {
-      setIsInviteOpen(false);
-      setInviteEmail('');
-      setInviteName('');
-      setInviteRole('employee');
-      setInvitePermissions({});
+      setIsCreateOpen(false);
+      setCreateEmail('');
+      setCreateName('');
+      setCreatePassword('');
+      setCreateRole('employee');
+      setCreatePermissions({});
     }
     setIsSubmitting(false);
+  };
+
+  const handleResetPassword = async (email: string, name: string) => {
+    if (confirm(`Send a password reset email to ${name} (${email})?`)) {
+      await resetPassword(email);
+    }
   };
   
   const PERMISSION_MODULES = ['inventory', 'orders', 'customers', 'delivery'];
@@ -85,12 +89,11 @@ export default function Users() {
   const handleOpenPermissions = (user: any) => {
     setEditingPermissionsUser(user);
     if (Array.isArray(user.permissions) && user.permissions.includes('all')) {
-       // If they have full array 'all', represent it as full access checkboxes
        const full: any = {};
        PERMISSION_MODULES.forEach(m => full[m] = ['all']);
-       setInvitePermissions(full);
+       setCreatePermissions(full);
     } else {
-       setInvitePermissions(user.permissions || {});
+       setCreatePermissions(user.permissions || {});
     }
     setIsPermissionsOpen(true);
   };
@@ -100,10 +103,10 @@ export default function Users() {
     try {
       setIsSubmitting(true);
       
-      let finalPerms: any = invitePermissions;
+      let finalPerms: any = createPermissions;
       if (editingPermissionsUser.role === 'viewer') {
-        finalPerms = Object.keys(invitePermissions).reduce((acc, mod) => {
-          if (invitePermissions[mod]?.length > 0) acc[mod] = ['read'];
+        finalPerms = Object.keys(createPermissions).reduce((acc, mod) => {
+          if (createPermissions[mod]?.length > 0) acc[mod] = ['read'];
           return acc;
         }, {} as Record<string, string[]>);
       }
@@ -126,7 +129,6 @@ export default function Users() {
      if (action === 'all') {
         newPerms[module] = newPerms[module].includes('all') ? [] : ['all'];
      } else {
-        // If they had 'all', break it down to specific ones except the one being toggled off
         if (newPerms[module].includes('all')) {
            newPerms[module] = PERMISSION_ACTIONS.filter(a => a !== action);
         } else {
@@ -134,7 +136,6 @@ export default function Users() {
               newPerms[module] = newPerms[module].filter(a => a !== action);
            } else {
               newPerms[module] = [...newPerms[module], action];
-              // If they have all actions, simplify to 'all'
               if (PERMISSION_ACTIONS.every(a => newPerms[module].includes(a))) {
                  newPerms[module] = ['all'];
               }
@@ -142,7 +143,6 @@ export default function Users() {
         }
      }
      
-     // Clean up empty modules
      if (newPerms[module].length === 0) delete newPerms[module];
      
      setPerms(newPerms);
@@ -235,28 +235,28 @@ export default function Users() {
           </p>
         </div>
         
-        <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
+        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogTrigger asChild>
             <Button className="font-bold text-xs tracking-wider uppercase">
               <UserPlus className="h-4 w-4 mr-2" />
-              Invite User
+              Add User
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Invite New User</DialogTitle>
+              <DialogTitle>Add New User</DialogTitle>
               <DialogDescription>
-                Send an invitation email to a new team member. They will be prompted to set a password.
+                Create a new team member with email and password. They can sign in immediately.
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleInviteSubmit}>
+            <form onSubmit={handleCreateSubmit}>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Full Name</label>
                   <Input 
                     required 
-                    value={inviteName} 
-                    onChange={e => setInviteName(e.target.value)} 
+                    value={createName} 
+                    onChange={e => setCreateName(e.target.value)} 
                     placeholder="John Doe" 
                   />
                 </div>
@@ -265,14 +265,25 @@ export default function Users() {
                   <Input 
                     required 
                     type="email" 
-                    value={inviteEmail} 
-                    onChange={e => setInviteEmail(e.target.value)} 
+                    value={createEmail} 
+                    onChange={e => setCreateEmail(e.target.value)} 
                     placeholder="john@example.com" 
                   />
                 </div>
                 <div className="space-y-2">
+                  <label className="text-sm font-medium">Password</label>
+                  <Input 
+                    required 
+                    type="password" 
+                    value={createPassword} 
+                    onChange={e => setCreatePassword(e.target.value)} 
+                    placeholder="Minimum 6 characters"
+                    minLength={6}
+                  />
+                </div>
+                <div className="space-y-2">
                   <label className="text-sm font-medium">Role</label>
-                  <Select value={inviteRole} onValueChange={(val) => setInviteRole(val as UserRole)}>
+                  <Select value={createRole} onValueChange={(val) => setCreateRole(val as UserRole)}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select a role" />
                     </SelectTrigger>
@@ -286,13 +297,13 @@ export default function Users() {
                 
                 <div className="space-y-2 pt-2">
                   <label className="text-sm font-medium">Initial Permissions</label>
-                  {renderPermissionMatrix(invitePermissions, setInvitePermissions, inviteRole)}
+                  {renderPermissionMatrix(createPermissions, setCreatePermissions, createRole)}
                 </div>
               </div>
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsInviteOpen(false)}>Cancel</Button>
+                <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
                 <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? 'Sending...' : 'Send Invitation'}
+                  {isSubmitting ? 'Creating...' : 'Create User'}
                 </Button>
               </DialogFooter>
             </form>
@@ -308,7 +319,7 @@ export default function Users() {
               </DialogDescription>
             </DialogHeader>
             <div className="py-4">
-               {editingPermissionsUser && renderPermissionMatrix(invitePermissions, setInvitePermissions, editingPermissionsUser.role)}
+               {editingPermissionsUser && renderPermissionMatrix(createPermissions, setCreatePermissions, editingPermissionsUser.role)}
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsPermissionsOpen(false)}>Cancel</Button>
@@ -359,7 +370,7 @@ export default function Users() {
                       <Select 
                         value={u.role || 'user'} 
                         onValueChange={(val) => updateUserRole(u.id, val as UserRole)}
-                        disabled={isSelf} // Don't let users change their own role accidentally to prevent lockout
+                        disabled={isSelf}
                       >
                         <SelectTrigger className={`w-[140px] h-8 text-xs font-bold uppercase tracking-wider ${getRoleBadgeColor(u.role)} border-0`}>
                           <SelectValue />
@@ -373,6 +384,15 @@ export default function Users() {
                       </Select>
                     </TableCell>
                     <TableCell className="text-right">
+                      <Button
+                        variant="ghost" 
+                        size="icon"
+                        title="Reset Password"
+                        className="text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10 mr-1"
+                        onClick={() => handleResetPassword(u.email, u.full_name)}
+                      >
+                        <RotateCcw className="h-4 w-4" />
+                      </Button>
                       <Button
                         variant="ghost" 
                         size="icon"

@@ -73,23 +73,52 @@ export function useUsers() {
     }
   };
 
-  const inviteUser = async (email: string, fullName: string, role: UserRole, permissions?: any) => {
+  const createUser = async (email: string, password: string, fullName: string, role: UserRole, permissions?: any) => {
     try {
-      toast.loading('Inviting user...');
+      toast.loading('Creating user...');
       const { data, error } = await supabase.functions.invoke('manage-users', {
-        body: { action: 'invite', email, name: fullName, role, permissions }
+        body: { action: 'create', email, password, name: fullName, role, permissions }
       });
 
-      if (error) throw error;
+      if (error) {
+        const errorBody = error.context ? await error.context.json().catch(() => null) : null;
+        const message = errorBody?.error || error.message;
+        console.error('Edge Function error:', { error, errorBody });
+        throw new Error(message);
+      }
       if (data?.error) throw new Error(data.error);
 
       toast.dismiss();
-      toast.success('User invited successfully');
-      await fetchUsers(); // Refresh list to get the new profile
+      toast.success('User created successfully');
+      await fetchUsers();
       return true;
     } catch (error: any) {
       toast.dismiss();
-      toast.error('Failed to invite user: ' + error.message);
+      toast.error('Failed to create user: ' + error.message);
+      return false;
+    }
+  };
+
+  const resetPassword = async (email: string) => {
+    try {
+      toast.loading('Sending reset password email...');
+      const { data, error } = await supabase.functions.invoke('manage-users', {
+        body: { action: 'reset-password', email }
+      });
+
+      if (error) {
+        const errorBody = error.context ? await error.context.json().catch(() => null) : null;
+        const message = errorBody?.error || error.message;
+        throw new Error(message);
+      }
+      if (data?.error) throw new Error(data.error);
+
+      toast.dismiss();
+      toast.success('Password reset email sent to ' + email);
+      return true;
+    } catch (error: any) {
+      toast.dismiss();
+      toast.error('Failed to send reset email: ' + error.message);
       return false;
     }
   };
@@ -101,7 +130,11 @@ export function useUsers() {
         body: { action: 'delete', userId }
       });
 
-      if (error) throw error;
+      if (error) {
+        const errorBody = error.context ? await error.context.json().catch(() => null) : null;
+        const message = errorBody?.error || error.message;
+        throw new Error(message);
+      }
       if (data?.error) throw new Error(data.error);
 
       toast.dismiss();
@@ -115,5 +148,5 @@ export function useUsers() {
     }
   };
 
-  return { users, loading, fetchUsers, updateUserRole, updateUserPermissions, inviteUser, deleteUser };
+  return { users, loading, fetchUsers, updateUserRole, updateUserPermissions, createUser, resetPassword, deleteUser };
 }
