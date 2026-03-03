@@ -16,9 +16,6 @@ export default defineConfig({
     port: 5174,
   },
   build: {
-    rollupOptions: {
-      external: ["date-fns"],
-    },
     cssMinify: "esbuild",
     minify: "esbuild",
   },
