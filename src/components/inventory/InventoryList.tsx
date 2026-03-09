@@ -80,7 +80,7 @@ export function InventoryList({ products, loading, selectedIds, onToggleSelect, 
               />
             </TableHead>
             <TableHead className="font-bold text-[10px] uppercase tracking-widest">Product Name</TableHead>
-            <TableHead className="font-bold text-[10px] uppercase tracking-widest">SKU</TableHead>
+            <TableHead className="font-bold text-[10px] uppercase tracking-widest hidden sm:table-cell">SKU</TableHead>
             <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest">Quantity</TableHead>
             <TableHead className="font-bold text-[10px] uppercase tracking-widest">Status</TableHead>
             <TableHead className="w-[40px]"></TableHead>
@@ -122,7 +122,7 @@ export function InventoryList({ products, loading, selectedIds, onToggleSelect, 
                        )}
                      </div>
                   </TableCell>
-                  <TableCell className="font-mono text-xs font-bold text-primary">
+                  <TableCell className="font-mono text-xs font-bold text-primary hidden sm:table-cell">
                      {group.sku ? group.sku : (hasVariants ? <span className="text-muted-foreground italic text-[10px]">Multiple</span> : '-')}
                   </TableCell>
                   <TableCell className="text-right font-black text-sm">{totalQty}</TableCell>
@@ -179,7 +179,7 @@ export function InventoryList({ products, loading, selectedIds, onToggleSelect, 
                      <TableCell className="text-sm font-medium text-foreground/80 pl-6">
                        {variant.name.replace(group.name + ' - ', '')}
                      </TableCell>
-                     <TableCell className="font-mono text-xs font-medium text-primary/80 pl-6">{variant.sku}</TableCell>
+                     <TableCell className="font-mono text-xs font-medium text-primary/80 pl-6 hidden sm:table-cell">{variant.sku}</TableCell>
                      <TableCell className="text-right font-bold text-sm text-foreground/80">{variant.quantity_on_hand}</TableCell>
                      <TableCell className="pl-6">
                        {variant.quantity_on_hand > (variant.low_stock_threshold || 10) ? (

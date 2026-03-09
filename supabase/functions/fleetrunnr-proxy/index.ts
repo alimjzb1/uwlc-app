@@ -31,7 +31,7 @@ serve(async (req: Request) => {
     }
 
     const body = await req.json();
-    const { endpoint, apiKey } = body;
+    const { endpoint, apiKey, method: httpMethod, payload } = body;
 
     if (!endpoint || !apiKey) {
       return new Response(JSON.stringify({ error: "Missing endpoint or API key" }), {
@@ -41,14 +41,22 @@ serve(async (req: Request) => {
     }
 
     const fleetrunnrUrl = `https://api.fleetrunnr.net/rest/v1/${endpoint}`;
+    const fetchMethod = (httpMethod || "GET").toUpperCase();
     
-    const response = await fetch(fleetrunnrUrl, {
-      method: "GET",
+    const fetchOptions: RequestInit = {
+      method: fetchMethod,
       headers: {
         "Authorization": `Bearer ${apiKey}`,
         "Accept": "application/json",
+        ...(fetchMethod !== "GET" ? { "Content-Type": "application/json" } : {}),
       },
-    });
+    };
+
+    if (fetchMethod !== "GET" && payload) {
+      fetchOptions.body = JSON.stringify(payload);
+    }
+
+    const response = await fetch(fleetrunnrUrl, fetchOptions);
 
     const data = await response.text();
     let jsonData = { message: data };

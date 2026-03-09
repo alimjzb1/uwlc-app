@@ -47,7 +47,7 @@ export function CustomerList({ customers, loading, selectedIds, onToggleSelect, 
               />
             </TableHead>
             <TableHead className="font-black text-[10px] uppercase tracking-[0.15em] text-muted-foreground/70">Name</TableHead>
-            <TableHead className="font-black text-[10px] uppercase tracking-[0.15em] text-muted-foreground/70">Contact</TableHead>
+            <TableHead className="font-black text-[10px] uppercase tracking-[0.15em] text-muted-foreground/70 hidden sm:table-cell">Contact</TableHead>
             <TableHead className="font-black text-[10px] uppercase tracking-[0.15em] text-muted-foreground/70">Orders</TableHead>
             <TableHead className="font-black text-[10px] uppercase tracking-[0.15em] text-muted-foreground/70">Total Spent</TableHead>
             <TableHead className="font-black text-[10px] uppercase tracking-[0.15em] text-muted-foreground/70">Last Order</TableHead>
@@ -76,7 +76,7 @@ export function CustomerList({ customers, loading, selectedIds, onToggleSelect, 
                   ID: {customer.id.substring(0, 8)}
                 </div>
               </TableCell>
-              <TableCell>
+              <TableCell className="hidden sm:table-cell">
                 <div className="text-xs font-medium text-foreground">{customer.email}</div>
                 <div className="text-[10px] text-muted-foreground opacity-60">{customer.phone || '-'}</div>
               </TableCell>

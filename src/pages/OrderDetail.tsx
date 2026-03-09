@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -11,14 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+
 import { 
   ArrowLeft, 
   Mail, 
@@ -51,9 +44,10 @@ export default function OrderDetail() {
   const [prevOrderId, setPrevOrderId] = useState<string | null>(null);
   const [nextOrderId, setNextOrderId] = useState<string | null>(null);
    const [productLinks, setProductLinks] = useState<Record<string, { id: string, qtyPerUnit: number }[]>>({}); 
-   const [internalInventory, setInternalInventory] = useState<Record<string, { id: string, quantity: number, sku?: string }>>({}); 
+   const [internalInventory, setInternalInventory] = useState<Record<string, { id: string, quantity: number, sku?: string, image_url?: string }>>({}); 
    const [skuToId, setSkuToId] = useState<Record<string, string>>({});
    const { blockedOrders, loading: analyticsLoading } = useOrderAnalytics();
+   const location = useLocation();
 
   useEffect(() => {
     if (id) {
@@ -91,11 +85,37 @@ export default function OrderDetail() {
       setOrder(data);
 
       // Fetch bridges and internal inventory to identify linked products accurately
-      const [linksRes, inventoryRes] = await Promise.all([
+      const [linksRes, inventoryRes, shopifyProductsRes] = await Promise.all([
           supabase.from('product_links').select('*'),
-          supabase.from('products_inventory').select('id, sku, quantity_on_hand')
+          supabase.from('products_inventory').select('id, sku, quantity_on_hand, image_url'),
+          supabase.from('products_shopify').select('id, shopify_product_id, shopify_variant_id, sku, image_url')
       ]);
 
+      const shopifyImages: Record<string, string> = {};
+      shopifyProductsRes.data?.forEach(p => {
+          if (p.id && p.image_url) shopifyImages[p.id] = p.image_url;
+          if (p.shopify_product_id && p.image_url) shopifyImages[p.shopify_product_id] = p.image_url;
+          if (p.shopify_variant_id && p.image_url) shopifyImages[p.shopify_variant_id] = p.image_url;
+          if (p.sku && p.image_url) shopifyImages[p.sku] = p.image_url;
+      });
+
+      const orderWithImages = {
+          ...data,
+          items: data.items?.map((item: any) => ({
+              ...item,
+              product: {
+                  image_url: (item.shopify_variant_id && shopifyImages[item.shopify_variant_id])
+                              ? shopifyImages[item.shopify_variant_id]
+                              : (item.product_id && shopifyImages[item.product_id]) 
+                                ? shopifyImages[item.product_id] 
+                                : (item.sku ? shopifyImages[item.sku] : undefined)
+              }
+          }))
+      };
+
+      setOrder(orderWithImages);
+
+      // Fetch bridges and internal inventory to identify linked products accuratelyr }[]> = {};
       const bridgeMap: Record<string, { id: string, qtyPerUnit: number }[]> = {};
       linksRes.data?.forEach(l => {
           const vId = l.shopify_variant_id;
@@ -105,10 +125,10 @@ export default function OrderDetail() {
       });
       setProductLinks(bridgeMap);
 
-      const invMap: Record<string, { id: string, quantity: number, sku?: string }> = {};
+      const invMap: Record<string, { id: string, quantity: number, sku?: string, image_url?: string }> = {};
       const skuMap: Record<string, string> = {};
       inventoryRes.data?.forEach(p => {
-          invMap[p.id] = { id: p.id, quantity: p.quantity_on_hand || 0, sku: p.sku };
+          invMap[p.id] = { id: p.id, quantity: p.quantity_on_hand || 0, sku: p.sku, image_url: p.image_url };
           if (p.sku) skuMap[p.sku] = p.id;
       });
       setInternalInventory(invMap);
@@ -116,8 +136,15 @@ export default function OrderDetail() {
 
       console.log("[OrderDetail] Order data loaded successfully");
 
-      // Fetch navigation relative to this order's creation time
-      if (data) {
+      // Fetch navigation relative to this order's creation time OR the passed ordered array
+      const state = location.state as { orderIds?: string[] } | null;
+      if (state?.orderIds && state.orderIds.length > 0) {
+          const currentIndex = state.orderIds.indexOf(orderId);
+          if (currentIndex !== -1) {
+              setPrevOrderId(currentIndex < state.orderIds.length - 1 ? state.orderIds[currentIndex + 1] : null); // list is newest first
+              setNextOrderId(currentIndex > 0 ? state.orderIds[currentIndex - 1] : null);
+          }
+      } else if (data) {
         try {
             // Prev: created before current
             const { data: prev } = await supabase
@@ -180,27 +207,29 @@ export default function OrderDetail() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-            <Button variant="outline" size="icon" asChild>
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="flex items-start md:items-center gap-4 w-full md:w-auto">
+            <Button variant="outline" size="icon" asChild className="shrink-0 mt-1 md:mt-0">
             <Link to="/orders">
                 <ArrowLeft className="h-4 w-4" />
             </Link>
             </Button>
-            <div className="flex-1">
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+        <div className="flex-1 min-w-0">
+          <h1 className="text-xl md:text-2xl font-bold tracking-tight flex items-center gap-2 flex-wrap">
               Order #{order.shopify_order_number}
               <CopyButton value={order.shopify_order_number} label="Order #" />
           </h1>
-          <div className="flex items-center gap-2 mt-1">
-            <p className="text-sm text-muted-foreground mr-2">
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            <p className="text-xs md:text-sm text-muted-foreground mr-1">
                 {format(new Date(order.created_at), "PPP p")}
             </p>
-            <span className="text-[10px] font-mono font-black uppercase tracking-wider text-muted-foreground bg-muted/30 px-2 py-0.5 rounded-md">ID: {order.shopify_order_id}</span>
+            <span className="text-[9px] md:text-[10px] font-mono font-black uppercase tracking-wider text-muted-foreground bg-muted/30 px-2 py-0.5 rounded-md truncate max-w-[120px] md:max-w-none">ID: {order.shopify_order_id}</span>
             <CopyButton value={order.shopify_order_id} label="Shopify ID" />
           </div>
           </div>
-          <div className="flex items-center gap-2">
+        </div>
+        
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto mt-2 md:mt-0">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="font-bold text-[10px] uppercase tracking-wider gap-2 h-9 border-muted-foreground/20 bg-card/50">
@@ -271,17 +300,14 @@ export default function OrderDetail() {
                 <Badge className="text-base">
                     {order.internal_status?.replace('_', ' ').toUpperCase()}
                 </Badge>
-            </div>
-
-        </div>
-        
+            </div>        
         <div className="flex flex-col gap-1">
             <Button
                 variant="outline"
                 size="icon"
                 className="h-8 w-8"
                 disabled={!nextOrderId}
-                onClick={() => nextOrderId && navigate(`/orders/${nextOrderId}`)}
+                onClick={() => nextOrderId && navigate(`/orders/${nextOrderId}`, { state: location.state })}
                 title="Next Order"
             >
                 <ChevronUp className="h-4 w-4" />
@@ -291,7 +317,7 @@ export default function OrderDetail() {
                 size="icon"
                 className="h-8 w-8"
                 disabled={!prevOrderId}
-                onClick={() => prevOrderId && navigate(`/orders/${prevOrderId}`)}
+                onClick={() => prevOrderId && navigate(`/orders/${prevOrderId}`, { state: location.state })}
                 title="Previous Order"
             >
                 <ChevronDown className="h-4 w-4" />
@@ -300,30 +326,27 @@ export default function OrderDetail() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        <div className="space-y-6">
+        <div className="space-y-6 min-w-0">
             <Card>
                 <CardHeader>
                     <CardTitle>Order Items</CardTitle>
                 </CardHeader>
-                <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead className="font-black text-[10px] uppercase tracking-[0.15em] text-muted-foreground/70">Product</TableHead>
-                                <TableHead className="text-right font-black text-[10px] uppercase tracking-[0.15em] text-muted-foreground/70">Qty</TableHead>
-                                <TableHead className="text-right font-black text-[10px] uppercase tracking-[0.15em] text-muted-foreground/70">Price</TableHead>
-                                <TableHead className="text-right font-black text-[10px] uppercase tracking-[0.15em] text-muted-foreground/70">Total</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
+                <CardContent className="p-0 sm:p-6">
+                    <div className="flex flex-col w-full divide-y">
+                        <div className="hidden md:grid grid-cols-[1fr,80px,100px,100px] gap-4 p-4 font-black text-[10px] uppercase tracking-[0.15em] text-muted-foreground/70 bg-muted/20">
+                            <div>Product</div>
+                            <div className="text-right">Qty</div>
+                            <div className="text-right">Price</div>
+                            <div className="text-right">Total</div>
+                        </div>
+
+                        <div className="flex flex-col divide-y">
                             {order.items?.map((item) => (
-                                <TableRow key={item.id}>
-                                    <TableCell>
-                                        <div className="flex items-center gap-2 group">
+                                <div key={item.id} className="grid grid-cols-1 md:grid-cols-[1fr,80px,100px,100px] gap-4 p-4 items-start md:items-center">
+                                    <div className="flex flex-col md:flex-row items-start md:items-center gap-2 group min-w-0">
                                             {(() => {
                                                 const shopifyVariantId = item.shopify_variant_id || null;
                                                 const sku = item.sku;
-                                                
                                                 const bridges = shopifyVariantId ? (productLinks[shopifyVariantId] || []) : [];
                                                 const internalProductIds = bridges.length > 0 
                                                     ? bridges 
@@ -333,82 +356,108 @@ export default function OrderDetail() {
                                                             ? [{ id: item.product_id, qtyPerUnit: 1 }] 
                                                             : []));
                                                 
-                                                if (internalProductIds.length > 0) {
-                                                    return (
-                                                        <div className="flex flex-col gap-2 w-full">
-                                                            <div className="font-bold text-sm text-foreground">{item.name}</div>
-                                                            <div className="space-y-1.5 ml-2 border-l-2 border-muted pl-3 py-0.5">
-                                                                {internalProductIds.map((comp, idx) => {
-                                                                    const inv = internalInventory[comp.id];
-                                                                    const stock = inv?.quantity || 0;
-                                                                    const availSets = Math.floor(stock / comp.qtyPerUnit);
-                                                                    const isThisCompShort = availSets < item.quantity;
-                                                                    
-                                                                    return (
-                                                                        <div key={`${comp.id}-${idx}`} className="flex flex-col">
-                                                                            <div className="flex items-center justify-between gap-4">
-                                                                                <Link to={`/inventory/${comp.id}`} className="text-[11px] font-bold text-muted-foreground hover:text-primary hover:underline flex items-center gap-1 group/link">
-                                                                                    {inv?.sku || '??'} | {comp.qtyPerUnit}u 
-                                                                                    <ExternalLink className="h-2 w-2 opacity-0 group-hover/link:opacity-100 transition-opacity" />
-                                                                                </Link>
-                                                                                <span className={`text-[10px] font-mono font-black ${isThisCompShort ? 'text-destructive' : 'text-emerald-500'}`}>
-                                                                                    {Math.min(availSets, item.quantity)}/{item.quantity}
-                                                                                </span>
-                                                                            </div>
-                                                                            {isThisCompShort && (
-                                                                                <div className="flex items-center gap-1.5 mt-0.5">
-                                                                                    <Badge variant="destructive" className="text-[8px] h-3 px-1 font-black uppercase tracking-tighter rounded-sm">Short {item.quantity - availSets}</Badge>
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                    );
-                                                                })}
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                }
+                                                const hasComponents = internalProductIds.length > 0;
                                                 
                                                 return (
-                                                    <div className="flex flex-col gap-1">
-                                                        <span className="font-bold text-sm text-muted-foreground">{item.name}</span>
-                                                        <Badge variant="outline" className="text-[9px] h-4 font-bold bg-amber-500/5 text-amber-500 border-amber-500/20 w-fit">Not Linked</Badge>
+                                                    <div className="flex gap-3 w-full">
+                                                        {item.product?.image_url && (
+                                                            <div className="h-16 w-16 md:h-12 md:w-12 rounded-md bg-muted/30 overflow-hidden shrink-0 border">
+                                                                <img src={item.product.image_url} alt={item.name} className="h-full w-full object-cover mix-blend-multiply dark:mix-blend-normal" />
+                                                            </div>
+                                                        )}
+                                                        <div className="flex flex-col gap-1 w-full min-w-0">
+                                                            <div className="flex items-start justify-between gap-2">
+                                                                <div className="font-bold text-sm text-foreground leading-tight">{item.name}</div>
+                                                                <div className="md:hidden font-mono text-xs font-bold shrink-0 bg-muted/30 px-2 rounded-sm border items-center flex h-6 w-fit h-fit">x{item.quantity}</div>
+                                                            </div>
+                                                            <div className="text-[10px] font-mono text-muted-foreground mb-1 mt-0.5 uppercase tracking-wide truncate">{item.sku}</div>
+                                                            
+                                                            {hasComponents && (
+                                                                <details className="group/details">
+                                                                    <summary className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 cursor-pointer hover:text-primary transition-colors select-none list-none flex items-center gap-1 w-fit">
+                                                                        <ChevronDown className="h-3 w-3 group-open/details:-rotate-180 transition-transform" />
+                                                                        View Components ({internalProductIds.length})
+                                                                    </summary>
+                                                                    <div className="space-y-1.5 ml-1.5 border-l-2 border-muted pl-3 py-1.5 mt-1.5 overflow-x-auto">
+                                                                        {internalProductIds.map((comp, idx) => {
+                                                                            const inv = internalInventory[comp.id];
+                                                                            const stock = inv?.quantity || 0;
+                                                                            const availSets = Math.floor(stock / comp.qtyPerUnit);
+                                                                            const isThisCompShort = availSets < item.quantity;
+                                                                            
+                                                                            return (
+                                                                                <div key={`${comp.id}-${idx}`} className="flex flex-col min-w-[200px]">
+                                                                                    <div className="flex items-center justify-between gap-4">
+                                                                                        <div className="flex items-center gap-2 min-w-0">
+                                                                                            {inv?.image_url && (
+                                                                                                <img src={inv.image_url} alt={inv?.sku} className="w-6 h-6 rounded-md object-cover border shrink-0" />
+                                                                                            )}
+                                                                                            <Link to={`/inventory/${comp.id}`} className="text-[11px] font-bold text-muted-foreground hover:text-primary hover:underline flex items-center gap-1 group/link truncate">
+                                                                                                {inv?.sku || '??'} | {comp.qtyPerUnit}u 
+                                                                                                <ExternalLink className="h-2 w-2 opacity-0 group-hover/link:opacity-100 transition-opacity shrink-0" />
+                                                                                            </Link>
+                                                                                        </div>
+                                                                                        <span className={`text-[10px] font-mono font-black shrink-0 ${isThisCompShort ? 'text-destructive' : 'text-emerald-500'}`}>
+                                                                                            {Math.min(availSets, item.quantity)}/{item.quantity}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    {isThisCompShort && (
+                                                                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                                                                            <Badge variant="destructive" className="text-[8px] h-3 px-1 font-black uppercase tracking-tighter rounded-sm cursor-default">Short {item.quantity - availSets}</Badge>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </details>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 );
                                             })()}
+                                    </div>
+                                    {/* Desktop Qty */}
+                                    <div className="hidden md:block text-right font-medium">{item.quantity}</div>
+                                    
+                                    {/* Price & Total Stack on Mobile, Inline on Desktop */}
+                                    <div className="flex justify-between md:contents items-center mt-2 md:mt-0 pt-2 border-t border-dashed md:border-transparent md:pt-0">
+                                        <div className="md:hidden text-xs font-bold text-muted-foreground uppercase tracking-widest">Pricing</div>
+                                        <div className="flex items-center gap-4 md:contents">
+                                            <div className="text-right font-medium text-sm md:text-base text-muted-foreground md:text-foreground">
+                                                {new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency }).format(item.price)}
+                                                <span className="md:hidden ml-1 text-xs font-black">/ ea</span>
+                                            </div>
+                                            <div className="text-right font-bold text-sm md:text-base">
+                                                {new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency }).format(item.price * item.quantity)}
+                                            </div>
                                         </div>
-                                        <div className="text-[10px] font-mono text-muted-foreground mb-1 uppercase tracking-wide">{item.sku}</div>
-                                    </TableCell>
-
-                                    <TableCell className="text-right font-medium">{item.quantity}</TableCell>
-                                    <TableCell className="text-right font-medium">
-                                        {new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency }).format(item.price)}
-                                    </TableCell>
-                                    <TableCell className="text-right font-bold">
-                                        {new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency }).format(item.price * item.quantity)}
-                                    </TableCell>
-                                </TableRow>
+                                    </div>
+                                </div>
                             ))}
-                            <TableRow>
-                                <TableCell colSpan={3} className="font-black text-[10px] uppercase tracking-widest text-muted-foreground/70 text-right">Subtotal</TableCell>
-                                <TableCell className="text-right font-bold">
-                                    {new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency }).format(order.subtotal_price)}
-                                </TableCell>
-                            </TableRow>
-                             <TableRow>
-                                <TableCell colSpan={3} className="font-black text-[10px] uppercase tracking-widest text-muted-foreground/70 text-right">Tax</TableCell>
-                                <TableCell className="text-right font-bold">
-                                    {new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency }).format(order.total_tax)}
-                                </TableCell>
-                            </TableRow>
-                            <TableRow>
-                                <TableCell colSpan={3} className="font-black text-[10px] uppercase tracking-widest text-primary text-right">Total</TableCell>
-                                <TableCell className="text-right font-black text-lg text-primary">
-                                    {new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency }).format(order.total_price)}
-                                </TableCell>
-                            </TableRow>
-                        </TableBody>
+                        </div>
 
-                    </Table>
+                        <div className="flex flex-col items-end gap-2 p-4 bg-muted/5">
+                            <div className="flex justify-between w-full md:w-64">
+                                <span className="font-black text-[10px] uppercase tracking-widest text-muted-foreground/70">Subtotal</span>
+                                <span className="text-right font-bold">
+                                    {new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency }).format(order.subtotal_price)}
+                                </span>
+                            </div>
+                             <div className="flex justify-between w-full md:w-64">
+                                <span className="font-black text-[10px] uppercase tracking-widest text-muted-foreground/70">Tax</span>
+                                <span className="text-right font-bold">
+                                    {new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency }).format(order.total_tax)}
+                                </span>
+                            </div>
+                            <div className="flex justify-between w-full md:w-64 pt-2 border-t mt-1">
+                                <span className="font-black text-[12px] uppercase tracking-widest text-primary">Total</span>
+                                <span className="text-right font-black text-lg text-primary">
+                                    {new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency || 'USD' }).format(order.total_price)}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
                 </CardContent>
             </Card>
 
@@ -477,7 +526,7 @@ export default function OrderDetail() {
             {/* <OrderApproval order={order} onOrderUpdated={refreshOrder} /> */}
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-6 min-w-0">
             <Card>
                 <CardHeader>
                     <CardTitle>Customer Details</CardTitle>
@@ -637,9 +686,7 @@ export default function OrderDetail() {
                     </CardContent>
                 </Card>
             )}
-            
             {/* Kept separate if needed, but merged above for cleaner UI as per request "place to show notes, tags..." */ }
-
         </div>
       </div>
     </div>

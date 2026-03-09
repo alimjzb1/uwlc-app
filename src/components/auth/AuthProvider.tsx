@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { User } from '@/types';
+import { User, Profile } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from './AuthContext';
@@ -9,14 +9,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  const fetchProfile = useCallback(async (userId: string) => {
+  const fetchProfile = useCallback(async (userId: string, retryCount = 0): Promise<Profile | null> => {
     // Add a timeout to profile fetch to prevent hanging the whole app
     const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error("Profile fetch timeout")), 10000)
+      setTimeout(() => reject(new Error("Profile fetch timeout")), 20000)
     );
 
     try {
-      console.log(`[Auth] Fetching profile for ${userId}...`);
+      console.log(`[Auth] Fetching profile for ${userId} (Attempt ${retryCount + 1})...`);
       const fetchPromise = supabase
         .from('profiles')
         .select('*')
@@ -29,16 +29,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ]);
 
       if (error) {
-        console.error('Error fetching profile:', error);
-        return null;
+        console.error(`[Auth] Error fetching profile (Attempt ${retryCount + 1}):`, error);
+        throw error;
       }
-      console.log('Profile fetched successfully:', { userId, role: profile?.role });
-      return profile;
+      
+      console.log('[Auth] Profile fetched successfully:', { userId, role: profile?.role });
+      return profile as Profile;
     } catch (e: any) {
-      console.error('Unexpected error or timeout fetching profile:', e.message);
+      console.error(`[Auth] Unexpected error or timeout (Attempt ${retryCount + 1}):`, e.message);
+      
+      // Retry once if it's the first attempt
+      if (retryCount < 1) {
+        console.log("[Auth] Retrying profile fetch...");
+        return fetchProfile(userId, retryCount + 1);
+      }
+      
       return null;
     }
-  }, []);
+  }, [supabase]);
 
   const refreshProfile = useCallback(async () => {
     if (!user) return;
@@ -52,46 +60,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let mounted = true;
     const lastFetchedId = { current: '' };
 
-    // Emergency global timeout: force loading to false after 15s no matter what
+    // Emergency global timeout: force loading to false after 40s no matter what
     const emergencyTimeout = setTimeout(() => {
       if (mounted && loading) {
         console.error("[Auth] EMERGENCY TIMEOUT: Force loading false.");
         setLoading(false);
       }
-    }, 15000);
+    }, 40000);
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
       
-      console.log("[Auth] Event:", event, session?.user?.id);
+      console.log("[Auth] Event:", event, "User ID:", session?.user?.id);
 
       if (event === 'SIGNED_OUT' || !session?.user) {
+        console.log("[Auth] No session, clearing user state.");
         lastFetchedId.current = '';
         setUser(null);
         setLoading(false);
         return;
       }
 
+      // IMMEDIATELY set user if we have a session, even before profile is fetched.
+      // This prevents ProtectedRoute from redirecting to /login if it sees user=null.
+      setUser(prev => {
+        if (!prev || prev.id !== session.user.id) {
+          console.log("[Auth] Initializing user state from session.");
+          return session.user as unknown as User;
+        }
+        return prev;
+      });
+
       // If we have a user and haven't fetched their profile yet in this session
       if (session.user.id !== lastFetchedId.current) {
         lastFetchedId.current = session.user.id;
-        console.log("[Auth] New session or user, fetching profile...");
+        console.log("[Auth] Session initialization, fetching profile for:", session.user.id);
+        
+        // Ensure we are loading while fetching the full profile
+        setLoading(true);
+        
         const profile = await fetchProfile(session.user.id);
         
-        if (mounted) {
-          // Properly type and assign the profile so it's accessible as user.profile.role
+        if (mounted && lastFetchedId.current === session.user.id) {
+          console.log("[Auth] Profile attached to user state:", !!profile);
           setUser({ ...session.user, profile } as unknown as User);
           clearTimeout(emergencyTimeout);
           setLoading(false);
         }
       } else if (mounted) {
-        // Already fetched or fetching for this user ID, but we shouldn't wipe the user.
-        // Keep the existing user (which has the profile) or just update session details 
-        // without wiping the profile.
-        setUser(prev => prev ? { ...session.user, profile: prev.profile } as unknown as User : null);
-        setLoading(false);
+        console.log("[Auth] Session data sync only.");
+        setUser(prev => {
+          if (!prev || prev.id !== session.user.id) return prev;
+          return { ...session.user, profile: prev.profile } as unknown as User;
+        });
       }
     });
 

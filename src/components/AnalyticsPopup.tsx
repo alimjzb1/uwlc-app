@@ -105,7 +105,7 @@ export function AnalyticsPopup(props: AnalyticsPopupProps) {
         return (
             <Popover>
                 <PopoverTrigger asChild>{props.children}</PopoverTrigger>
-                <PopoverContent className={`w-[450px] p-0 ${colorClasses.border} shadow-xl z-50`} align="start" onClick={e => e.stopPropagation()}>
+                <PopoverContent className={`w-[calc(100vw-2rem)] sm:w-[450px] p-0 ${colorClasses.border} shadow-xl z-50`} align="start" onClick={e => e.stopPropagation()}>
                     <div className={`${colorClasses.header} text-white text-[10px] font-black uppercase tracking-widest px-4 py-2 flex justify-between items-center rounded-t-lg`}>
                         <span>Blocked Orders Detail</span>
                         <div className="flex items-center gap-1 bg-black/10 p-0.5 rounded-md">
@@ -185,7 +185,7 @@ export function AnalyticsPopup(props: AnalyticsPopupProps) {
     const shopifyImpact = inventoryImpact.filter(i => i.source === 'shopify');
     const inventoryImpactItems = inventoryImpact.filter(i => i.source === 'inventory');
 
-    const copyText = [
+    const copyTextDetailed = [
         `PACKAGABLE ORDERS (${packagableOrders.length})`,
         `━━━━━━━━━━━━━━━━━━━━`,
         ...(shopifyImpact.length > 0 ? [
@@ -203,6 +203,8 @@ export function AnalyticsPopup(props: AnalyticsPopupProps) {
         `  ${packagableOrders.map(o => `#${o.orderNumber}`).join(', ')}`,
     ].join('\n');
 
+    const copyTextSimple = packagableOrders.map(o => `#${o.orderNumber}`).join(', ');
+
     const renderImpactItem = (item: InventoryImpactItem, i: number) => (
         <div key={i} className="bg-muted/30 p-2 rounded-md text-xs">
             <div className="font-semibold truncate" title={item.name}>
@@ -219,12 +221,17 @@ export function AnalyticsPopup(props: AnalyticsPopupProps) {
     return (
         <Popover>
             <PopoverTrigger asChild>{props.children}</PopoverTrigger>
-            <PopoverContent className="w-[420px] p-0 border-emerald-500/30 shadow-xl z-50" align="start" onClick={e => e.stopPropagation()}>
-                <div className="bg-emerald-500 text-white text-[10px] font-black uppercase tracking-widest px-4 py-2.5 flex justify-between items-center rounded-t-lg">
+            <PopoverContent className="w-[calc(100vw-2rem)] sm:w-[420px] p-0 border-emerald-500/30 shadow-xl z-50" align="start" onClick={e => e.stopPropagation()}>
+                <div className="bg-emerald-500 text-white text-[10px] font-black uppercase tracking-widest px-4 py-2 flex justify-between items-center rounded-t-lg">
                     <span>Packagable Orders Detail</span>
-                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-white hover:bg-white/20" onClick={() => handleCopy(copyText, true)}>
-                        {copied === true ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                    </Button>
+                    <div className="flex items-center gap-1 bg-black/10 p-0.5 rounded-md">
+                        <Button size="sm" variant="ghost" className="h-6 px-2 text-[9px] font-bold uppercase tracking-widest text-white hover:bg-white/20" onClick={() => handleCopy(copyTextDetailed, 'detailed')}>
+                            {copied === 'detailed' ? <Check className="h-3 w-3 mr-1" /> : <Copy className="h-3 w-3 mr-1" />} Detailed
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-6 px-2 text-[9px] font-bold uppercase tracking-widest text-white hover:bg-white/20" onClick={() => handleCopy(copyTextSimple, 'simple')}>
+                            {copied === 'simple' ? <Check className="h-3 w-3 mr-1" /> : <Copy className="h-3 w-3 mr-1" />} Simple
+                        </Button>
+                    </div>
                 </div>
                 <div className="max-h-[400px] overflow-y-auto">
                     {loading && <p className="text-xs text-muted-foreground italic p-4">Loading...</p>}

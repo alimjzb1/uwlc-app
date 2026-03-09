@@ -3,7 +3,7 @@ import { Outlet } from 'react-router-dom';
 import { ModeToggle } from '@/components/mode-toggle';
 import { Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { useState } from 'react';
 
 export function Layout() {
@@ -28,6 +28,10 @@ export function Layout() {
                 </Button>
               </SheetTrigger>
               <SheetContent side="left" className="p-0 w-64">
+                <SheetHeader className="sr-only">
+                  <SheetTitle>Navigation Menu</SheetTitle>
+                  <SheetDescription>Access application pages and settings</SheetDescription>
+                </SheetHeader>
                 <Sidebar onNavigate={() => setIsMobileMenuOpen(false)} />
               </SheetContent>
             </Sheet>
@@ -35,7 +39,7 @@ export function Layout() {
           
           <ModeToggle />
         </header>
-        <main className="flex-1 overflow-y-auto p-4 md:p-8">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-8">
           <Outlet />
         </main>
       </div>

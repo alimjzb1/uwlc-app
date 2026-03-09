@@ -4,7 +4,7 @@ import { useDashboard } from "@/hooks/use-dashboard";
 import { useOrderAnalytics } from "@/hooks/use-orders";
 import { useShopifySync } from "@/hooks/use-shopify-sync";
 import { useAppSettings } from "@/hooks/use-app-settings";
-import { Users, AlertCircle, Truck, ShoppingBag, ChevronRight, Package, XOctagon, DollarSign, RefreshCw } from "lucide-react";
+import { Users, AlertCircle, Truck, ShoppingBag, ChevronRight, Package, XOctagon, DollarSign, RefreshCw, Wallet, Clock, TruckIcon, Receipt } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "react-router-dom";
@@ -12,6 +12,7 @@ import { AnalyticsPopup } from "@/components/AnalyticsPopup";
 import { DatePickerWithRange } from "@/components/ui/date-range-picker";
 import { DateRange } from "react-day-picker";
 import { Button } from "@/components/ui/button";
+import { useDeliveryFinance } from "@/hooks/use-delivery-finance";
 
 export default function Dashboard() {
   // Set default date to today
@@ -25,6 +26,7 @@ export default function Dashboard() {
   const { syncRecentOrders, isSyncing } = useShopifySync();
   const { getSetting } = useAppSettings();
   const defaultPageSize = getSetting('default_page_size', 50);
+  const { metrics: financeMetrics, loading: financeLoading } = useDeliveryFinance(dateRange);
 
   // Auto-sync on load
   useEffect(() => {
@@ -188,6 +190,84 @@ export default function Dashboard() {
             </CardContent>
             </Card>
             </AnalyticsPopup>
+        </div>
+      </div>
+
+      {/* Delivery Finance Section */}
+      <div className="space-y-4">
+        <h3 className="text-lg font-black uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+          <Wallet className="h-5 w-5" /> Delivery & Carrier Finances
+        </h3>
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          {/* Cash Collected from Carrier */}
+          <Link to="/orders?cash_status=collected">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer border-emerald-200 bg-emerald-50/10 h-full">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-[10px] font-black uppercase text-emerald-600 tracking-widest">Carrier Payouts</CardTitle>
+                <Wallet className="h-4 w-4 text-emerald-600" />
+              </CardHeader>
+              <CardContent>
+                {financeLoading ? <Skeleton className="h-8 w-24" /> : <div className="text-2xl font-bold text-emerald-700">${financeMetrics.cashCollected.toFixed(2)}</div>}
+                <p className="text-[10px] font-bold text-muted-foreground mt-1 uppercase tracking-tighter">{financeMetrics.cashCollectedCount} orders settled</p>
+              </CardContent>
+            </Card>
+          </Link>
+
+          {/* Awaiting Settlement (Delivered but unpaid) */}
+          <Link to="/orders?cash_status=pending_collection">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer border-yellow-200 bg-yellow-50/10 h-full">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-[10px] font-black uppercase text-yellow-600 tracking-widest">Awaiting Payout</CardTitle>
+                <Clock className="h-4 w-4 text-yellow-600 animate-pulse" />
+              </CardHeader>
+              <CardContent>
+                {financeLoading ? <Skeleton className="h-8 w-24" /> : <div className="text-2xl font-bold text-yellow-700">${financeMetrics.cashPendingCollection.toFixed(2)}</div>}
+                <p className="text-[10px] font-bold text-muted-foreground mt-1 uppercase tracking-tighter">{financeMetrics.cashPendingCollectionCount} delivered, not paid</p>
+              </CardContent>
+            </Card>
+          </Link>
+
+          {/* Paid Carrier Invoices (Our Expense) */}
+          <Link to="/invoices?type=received&status=paid">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer border-blue-200 bg-blue-50/10 h-full">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-[10px] font-black uppercase text-blue-600 tracking-widest">Paid Invoices</CardTitle>
+                <Receipt className="h-4 w-4 text-blue-600" />
+              </CardHeader>
+              <CardContent>
+                {financeLoading ? <Skeleton className="h-8 w-24" /> : <div className="text-2xl font-bold text-blue-700">${financeMetrics.totalPaidInvoices.toFixed(2)}</div>}
+                <p className="text-[10px] font-bold text-muted-foreground mt-1 uppercase tracking-tighter">{financeMetrics.totalPaidInvoicesCount} invoices paid</p>
+              </CardContent>
+            </Card>
+          </Link>
+
+          {/* Unpaid Carrier Invoices (Debt) */}
+          <Link to="/invoices?type=received&status=pending">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer border-rose-200 bg-rose-50/10 h-full shadow-sm ring-1 ring-rose-500/10">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-[10px] font-black uppercase text-rose-600 tracking-widest">Unpaid Invoices</CardTitle>
+                <AlertCircle className="h-4 w-4 text-rose-600" />
+              </CardHeader>
+              <CardContent>
+                {financeLoading ? <Skeleton className="h-8 w-24" /> : <div className="text-2xl font-bold text-rose-700">${financeMetrics.totalUnpaidInvoices.toFixed(2)}</div>}
+                <p className="text-[10px] font-bold text-muted-foreground mt-1 uppercase tracking-tighter text-rose-600/70 font-black">{financeMetrics.totalUnpaidInvoicesCount} invoices pending</p>
+              </CardContent>
+            </Card>
+          </Link>
+
+          {/* Pending Delivery (Future Cash) */}
+          <Link to="/orders?cash_status=pending_delivery">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer border-muted bg-muted/5 h-full opacity-60 grayscale hover:grayscale-0 hover:opacity-100">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Pending Transit</CardTitle>
+                <TruckIcon className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {financeLoading ? <Skeleton className="h-8 w-24" /> : <div className="text-2xl font-bold">${financeMetrics.cashPendingDelivery.toFixed(2)}</div>}
+                <p className="text-[10px] font-bold text-muted-foreground mt-1 uppercase tracking-tighter">{financeMetrics.cashPendingDeliveryCount} in transit</p>
+              </CardContent>
+            </Card>
+          </Link>
         </div>
       </div>
 

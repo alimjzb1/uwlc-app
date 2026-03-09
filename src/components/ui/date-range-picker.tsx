@@ -181,7 +181,7 @@ export function DatePickerWithRange({
             id="date"
             variant={"outline"}
             className={cn(
-              "w-[260px] justify-between text-left font-bold h-11 bg-card border-muted-foreground/10 hover:border-primary/50 rounded-xl px-4 transition-all",
+              "w-full sm:w-[260px] justify-between text-left font-bold h-11 bg-card border-muted-foreground/10 hover:border-primary/50 rounded-xl px-4 transition-all",
               !date && "text-muted-foreground"
             )}
           >
@@ -198,9 +198,9 @@ export function DatePickerWithRange({
             <ChevronDown className="h-4 w-4 opacity-30" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[840px] p-0 flex shadow-[0_20px_50px_rgba(0,0,0,0.3)] rounded-3xl border-muted/20 bg-card overflow-hidden" align="end">
-          {/* Sidebar */}
-          <div className="w-[200px] border-r border-muted/20 flex flex-col p-2 bg-muted/5">
+        <PopoverContent className="w-[100vw] sm:w-[840px] max-h-[90vh] overflow-y-auto p-0 flex flex-col sm:flex-row shadow-[0_20px_50px_rgba(0,0,0,0.3)] rounded-t-3xl sm:rounded-3xl border-muted/20 bg-card overflow-hidden" align="end" side="bottom" sideOffset={5}>
+          {/* Presets: horizontal scroll on mobile, sidebar on desktop */}
+          <div className="hidden sm:flex w-[200px] border-r border-muted/20 flex-col p-2 bg-muted/5">
              <div className="px-3 py-3 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground opacity-40 mb-1">Presets</div>
              <div className="flex-1 overflow-y-auto space-y-0.5 pr-1 custom-scrollbar">
                 {presets.map((preset) => {
@@ -231,6 +231,33 @@ export function DatePickerWithRange({
              </div>
           </div>
 
+          {/* Mobile presets - horizontal scroll */}
+          <div className="sm:hidden flex overflow-x-auto gap-1.5 px-3 py-2 border-b border-muted/20 bg-muted/5 no-scrollbar">
+            {presets.map((preset) => {
+              const pVal = preset.getValue()
+              const isActive = localDate?.from && localDate?.to && 
+                format(pVal.from, 'yyyy-MM-dd') === format(localDate.from, 'yyyy-MM-dd') &&
+                format(pVal.to, 'yyyy-MM-dd') === format(localDate.to, 'yyyy-MM-dd');
+              return (
+                <Button
+                  key={preset.label}
+                  variant={isActive ? "default" : "outline"}
+                  className={cn(
+                    "shrink-0 text-[10px] font-bold h-7 px-3 rounded-full",
+                    isActive && "bg-primary text-primary-foreground"
+                  )}
+                  onClick={() => {
+                    setLocalDate(preset.getValue())
+                    setActiveTab("fixed")
+                    setSelectionStep(0)
+                  }}
+                >
+                  {preset.label}
+                </Button>
+              )
+            })}
+          </div>
+
           {/* Main Content */}
           <div className="flex-1 flex flex-col">
             <div className="p-4 border-b border-muted/20 bg-muted/5 flex items-center justify-between">
@@ -252,12 +279,12 @@ export function DatePickerWithRange({
                 </Button>
             </div>
 
-            <div className="flex-1 p-6 space-y-10">
+            <div className="flex-1 p-4 sm:p-6 space-y-6 sm:space-y-10">
                 <Tabs value={activeTab}>
-                    <TabsContent value="fixed" className="m-0 space-y-8">
+                    <TabsContent value="fixed" className="m-0 space-y-6 sm:space-y-8">
                         <div className="space-y-2">
-                            {/* Inputs Grid */}
-                            <div className="flex items-center gap-2">
+                            {/* Inputs Grid - stacked on mobile */}
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                                 <div className="flex-1 space-y-2">
                                     <Input 
                                         type="text" 
@@ -279,7 +306,7 @@ export function DatePickerWithRange({
                                         />
                                     </div>
                                 </div>
-                                <ArrowRight className="h-3.5 w-3.5 opacity-20 shrink-0 mt-[-24px]" />
+                                <ArrowRight className="hidden sm:block h-3.5 w-3.5 opacity-20 shrink-0 mt-[-24px]" />
                                 <div className="flex-1 space-y-2">
                                     <div className="flex gap-2">
                                         <Input 
@@ -309,15 +336,15 @@ export function DatePickerWithRange({
                             </div>
                         </div>
 
-                        {/* Calendar */}
-                        <div className="flex justify-center pt-2">
+                        {/* Calendar - 1 month mobile, 2 months desktop */}
+                        <div className="flex justify-center pt-2 overflow-x-auto">
                             <Calendar
                                 initialFocus
                                 mode="range"
                                 defaultMonth={localDate?.from}
                                 selected={localDate}
                                 onSelect={handleCalendarSelect}
-                                numberOfMonths={2}
+                                numberOfMonths={typeof window !== 'undefined' && window.innerWidth < 640 ? 1 : 2}
                                 disabled={{ after: new Date() }}
                                 className="p-0"
                             />
@@ -325,7 +352,7 @@ export function DatePickerWithRange({
                     </TabsContent>
 
                     <TabsContent value="rolling" className="m-0 space-y-4">
-                        <div className="flex items-center gap-4 py-10 px-6 bg-primary/5 rounded-3xl border border-primary/10">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 py-6 sm:py-10 px-4 sm:px-6 bg-primary/5 rounded-2xl sm:rounded-3xl border border-primary/10">
                             <div className="text-xs font-black uppercase tracking-[0.2em] text-primary">Last</div>
                             <Input 
                                 type="number" 
@@ -343,14 +370,14 @@ export function DatePickerWithRange({
                                     <SelectItem value="months" className="font-bold text-[11px] uppercase">Months</SelectItem>
                                 </SelectContent>
                             </Select>
-                            <div className="flex-1 text-right">
+                            <div className="flex-1 text-left sm:text-right">
                                 <span className="text-[10px] font-black uppercase tracking-widest opacity-40">Active Range:</span>
                                 <div className="text-xs font-bold text-primary mt-1">
                                     {localDate?.from && format(localDate.from, "MMM d")} - {localDate?.to && format(localDate.to, "MMM d, yyyy")}
                                 </div>
                             </div>
                         </div>
-                        <p className="text-[10px] font-medium text-muted-foreground px-6 py-2 opacity-50 bg-muted/10 rounded-xl w-fit">
+                        <p className="text-[10px] font-medium text-muted-foreground px-4 sm:px-6 py-2 opacity-50 bg-muted/10 rounded-xl w-fit">
                             * This range will automatically shift forward as time progresses.
                         </p>
                     </TabsContent>

@@ -3,7 +3,7 @@ import { useSearchParams, Link, useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
-import { Search, Filter, Loader2, CheckCircle2, X, ArrowUp, ArrowDown, RefreshCw, Package, AlertCircle, Truck } from "lucide-react";
+import { Search, Filter, Loader2, CheckCircle2, X, ArrowUp, ArrowDown, RefreshCw, Package, AlertCircle, Truck, Wallet } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { AnalyticsPopup } from "@/components/AnalyticsPopup";
 
@@ -50,6 +50,7 @@ export default function Orders() {
 
   const [searchParams] = useSearchParams();
   const initialStatus = searchParams.get('status');
+  const cashStatusFilter = searchParams.get('cash_status');
 
   const defaultPageSize = getSetting('default_page_size', 50);
   const [pageSize, setPageSize] = useState<string>(String(defaultPageSize));
@@ -90,8 +91,24 @@ export default function Orders() {
     } else if (packagability === 'blocked') {
       result = result.filter(o => !o.isPackagable && o.internal_status === 'new' && o.fulfillment_status !== 'fulfilled');
     }
+    // Apply cash status filter from search params
+    if (cashStatusFilter) {
+      result = result.filter((o: any) => {
+        if (cashStatusFilter === 'collected') {
+          // Delivered AND settled (cash from Fleetrunnr to us)
+          return o.internal_status === 'delivered' && (o.is_settled === true || o.cash_collected === true);
+        } else if (cashStatusFilter === 'pending_collection') {
+          // Delivered but NOT settled
+          return o.internal_status === 'delivered' && (!o.is_settled && !o.cash_collected);
+        } else if (cashStatusFilter === 'pending_delivery') {
+          // Shipped/Packaging but not delivered
+          return ['shipped', 'ready_to_ship', 'packaging', 'new'].includes(o.internal_status) && o.tracking_number;
+        }
+        return true;
+      });
+    }
     return result;
-  }, [orders, packagability]);
+  }, [orders, packagability, cashStatusFilter]);
 
   // Handle outside status updates (e.g. from Dashboard)
   useEffect(() => {
@@ -108,10 +125,10 @@ export default function Orders() {
   };
 
   const toggleSelectAll = () => {
-    if (selectedOrders.length === orders.length && orders.length > 0) {
+    if (selectedOrders.length === displayedOrders.length && displayedOrders.length > 0) {
       setSelectedOrders([]);
     } else {
-      setSelectedOrders(orders.map(o => o.id));
+      setSelectedOrders(displayedOrders.map(o => o.id));
     }
   };
 
@@ -184,7 +201,7 @@ export default function Orders() {
 
   return (
     <div className="space-y-6 relative pb-24 min-h-[800px] animate-in fade-in duration-500">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
         <div className="flex flex-col gap-2">
           <h1 className="text-4xl font-black tracking-tighter text-foreground uppercase italic ring-offset-4">Orders</h1>
           <p className="text-muted-foreground font-medium text-lg">
@@ -192,10 +209,10 @@ export default function Orders() {
             {displayedOrders.length > 0 && <span className="ml-2 text-sm font-bold text-muted-foreground/60">({displayedOrders.length} shown)</span>}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full lg:w-auto">
           <PageSizeSelector value={pageSize} onChange={setPageSize} />
           
-          <div className="flex bg-muted/50 p-1 rounded-md">
+          <div className="flex bg-muted/50 p-1 rounded-md w-full sm:w-auto mt-2 sm:mt-0">
               <Button
                 variant="ghost"
                 size="sm"
@@ -219,6 +236,19 @@ export default function Orders() {
           </div>
         </div>
       </div>
+
+      {/* Cash Status Filter Banner */}
+      {cashStatusFilter && (
+        <div className="flex items-center gap-3 p-3 bg-primary/5 border border-primary/20 rounded-xl animate-in fade-in duration-300">
+          <Wallet className="h-4 w-4 text-primary" />
+          <span className="text-sm font-bold text-primary">
+            Showing: {cashStatusFilter === 'collected' ? 'Settled (Paid by Carrier)' : cashStatusFilter === 'pending_collection' ? 'Delivered, Awaiting Payout' : 'Pending Delivery (Future Cash)'}
+          </span>
+          <Button variant="ghost" size="sm" className="h-6 w-6 p-0 ml-auto" onClick={() => navigate('/orders')}>
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
 
       {/* Analytics Summary */}
       {(activeTab === 'all' || activeTab === 'unfulfilled') && (
@@ -404,12 +434,13 @@ export default function Orders() {
       </div>
 
       <div className="rounded-2xl border-none bg-card shadow-[0_8px_40px_rgba(0,0,0,0.12)] overflow-hidden">
-        <Table>
-          <TableHeader className="bg-muted/10 h-14 border-b border-muted/20">
+        <div className="overflow-x-auto w-full">
+          <Table className="min-w-[1000px]">
+            <TableHeader className="bg-muted/10 h-14 border-b border-muted/20">
             <TableRow className="hover:bg-transparent border-none">
               <TableHead className="w-[60px] px-6 text-center">
                 <Checkbox 
-                  checked={selectedOrders.length === orders.length && orders.length > 0}
+                  checked={selectedOrders.length === displayedOrders.length && displayedOrders.length > 0}
                   onCheckedChange={toggleSelectAll}
                   aria-label="Select all"
                   className="border-muted-foreground/30 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
@@ -472,8 +503,8 @@ export default function Orders() {
                   onClick={(e) => {
                     // Prevent navigation if clicking checkbox or action buttons
                     if ((e.target as HTMLElement).closest('[data-no-click="true"]')) return;
-                    // Navigate to order detail
-                    navigate(`/orders/${order.id}`);
+                    // Navigate to order detail passing current view context for next/prev
+                    navigate(`/orders/${order.id}`, { state: { orderIds: displayedOrders.map(o => o.id) } });
                   }}
                 >
                   <TableCell className="px-6 text-center" data-no-click="true">
@@ -524,7 +555,7 @@ export default function Orders() {
                         </Link>
                       ) : 'No Customer'}
                     </div>
-                    <div className="text-[10px] font-medium text-muted-foreground truncate max-w-[160px] opacity-70 mt-0.5">
+                    <div className="text-[10px] font-medium text-muted-foreground truncate max-w-[160px] opacity-70 mt-0.5 hidden sm:block">
                       {order.email}
                     </div>
                   </TableCell>
@@ -569,8 +600,8 @@ export default function Orders() {
 
                   </TableCell>
                   <TableCell className="text-right pr-6">
-                    <Button variant="ghost" size="sm" asChild className="h-9 px-4 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-primary hover:text-primary-foreground transition-all shadow-sm hover:shadow-primary/30">
-                      <Link to={`/orders/${order.id}`}>
+                    <Button variant="ghost" size="sm" asChild className="h-9 px-4 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-primary hover:text-primary-foreground transition-all shadow-sm hover:shadow-primary/30" data-no-click="true">
+                      <Link to={`/orders/${order.id}`} state={{ orderIds: displayedOrders.map(o => o.id) }}>
                         View
                       </Link>
                     </Button>
@@ -580,6 +611,7 @@ export default function Orders() {
             )}
           </TableBody>
         </Table>
+        </div>
       </div>
 
       {/* Floating Bulk Actions Bar */}

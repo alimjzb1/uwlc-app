@@ -83,7 +83,7 @@ export default function Users() {
     }
   };
   
-  const PERMISSION_MODULES = ['inventory', 'orders', 'customers', 'delivery'];
+  const PERMISSION_MODULES = ['inventory', 'orders', 'customers', 'delivery', 'invoices', 'locations'];
   const PERMISSION_ACTIONS = ['read', 'write', 'delete'];
 
   const handleOpenPermissions = (user: any) => {
@@ -336,8 +336,8 @@ export default function Users() {
           <TableHeader className="bg-muted/30">
             <TableRow>
               <TableHead>User Name</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>System Role</TableHead>
+              <TableHead className="hidden md:table-cell">Email</TableHead>
+              <TableHead className="hidden md:table-cell">System Role</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -362,11 +362,16 @@ export default function Users() {
                 return (
                   <TableRow key={u.id}>
                     <TableCell className="font-medium">
-                      {u.full_name}
-                      {isSelf && <Badge variant="outline" className="ml-2 text-[10px] uppercase">You</Badge>}
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center">
+                          {u.full_name}
+                          {isSelf && <Badge variant="outline" className="ml-2 text-[10px] uppercase">You</Badge>}
+                        </div>
+                        <span className="md:hidden text-xs text-muted-foreground">{u.email}</span>
+                      </div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{u.email}</TableCell>
-                    <TableCell>
+                    <TableCell className="text-muted-foreground hidden md:table-cell">{u.email}</TableCell>
+                    <TableCell className="hidden md:table-cell">
                       <Select 
                         value={u.role || 'user'} 
                         onValueChange={(val) => updateUserRole(u.id, val as UserRole)}

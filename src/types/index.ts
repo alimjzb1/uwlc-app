@@ -48,9 +48,10 @@ export interface OrderItem {
   shopify_variant_id?: string;
   product_id?: string;
   name: string;
-  sku: string;
+  sku: string | null;
   quantity: number;
   price: number;
+  product?: { image_url?: string };
 }
 
 export interface Order {

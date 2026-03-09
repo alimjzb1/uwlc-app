@@ -30,6 +30,7 @@ async function fetchShopifyProducts() {
 }
 
 export function useOrders(filters: UseOrdersProps = {}) {
+  const [rawOrdersState, setRawOrdersState] = useState<Order[]>([]);
   const [orders, setOrders] = useState<OrderWithPackagability[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -37,6 +38,8 @@ export function useOrders(filters: UseOrdersProps = {}) {
   const { logAction } = useAudit();
   // Using an inline instance of Inventory so we don't cause hook circle
   const inventoryControls = useInventory();
+  // Fetch global analytic state to attach to the visible set
+  const { packagableOrders, blockedOrders } = useOrderAnalytics();
 
   useEffect(() => {
     fetchOrders();
@@ -107,144 +110,41 @@ export function useOrders(filters: UseOrdersProps = {}) {
       });
       const ordersAscending = filters.sortOrder === 'desc' ? [...fetchedOrders].reverse() : fetchedOrders;
 
-      // Fetch global inventories and bridges for simulation
-      const [
-          { data: internalProducts },
-          shopifyProducts,
-          { data: productLinks }
-      ] = await Promise.all([
-          supabase.from('products_inventory').select('*'),
-          fetchShopifyProducts(),
-          supabase.from('product_links').select('*')
-      ]);
-
-      const internalStockMap = new Map<string, number>();
-      const skuToInternalMap = new Map<string, string>();
-      const shopifyStockMap = new Map<string, number>();
-      const bridgeMap = new Map<string, { id: string, qtyPerUnit: number }[]>();
-
-      internalProducts?.forEach(p => {
-          internalStockMap.set(p.id, p.quantity_on_hand || 0);
-          if (p.sku) skuToInternalMap.set(p.sku, p.id);
-      });
-      shopifyProducts?.forEach(p => {
-          if (p.sku) shopifyStockMap.set(p.sku, p.local_quantity || 0);
-      });
-      productLinks?.forEach(link => {
-          const variantId = link.shopify_variant_id;
-          const component = { 
-              id: link.inventory_product_id, 
-              qtyPerUnit: link.quantity_per_unit || 1 
-          };
-          if (!bridgeMap.has(variantId)) bridgeMap.set(variantId, []);
-          bridgeMap.get(variantId)!.push(component);
-      });
-
-      // Simulation engine: Oldest to Newest
-      const enrichedOrders = ordersAscending.map(order => {
-          const isPostPackaging = ['packaging', 'needs_approval', 'ready_to_ship', 'shipped', 'out_for_delivery', 'delivered', 'cancelled'].includes(order.internal_status);
-          if (isPostPackaging || order.fulfillment_status === 'fulfilled') {
-              return { ...order, isPackagable: false, missingItems: [] } as OrderWithPackagability;
-          }
-
-
-          let isPackagable = true;
-          const missingItems: { name: string; sku: string; required: number; available: number }[] = [];
-          
-          const tempShopifyDeductions = new Map<string, number>();
-          const tempInternalDeductions = new Map<string, number>();
-
-          if (order.items) {
-              for (const item of order.items) {
-                  const sku = item.sku;
-                  const shopifyVariantId = item.shopify_variant_id || null;
-                  
-                  let required = item.quantity;
-                  let shopifyAvail = sku ? (shopifyStockMap.get(sku) || 0) : 0;
-                  
-                  // 1. Try Shopify Local Stock first
-                  if (shopifyAvail > 0) {
-                      const take = Math.min(required, shopifyAvail);
-                      shopifyAvail -= take;
-                      required -= take;
-                      tempShopifyDeductions.set(sku!, (tempShopifyDeductions.get(sku!) || 0) + take);
-                  }
-
-                  // 2. Resolve to internal product(s) via Bridge or SKU Fallback
-                  const bridges = shopifyVariantId ? (bridgeMap.get(shopifyVariantId) || []) : [];
-                  const internalProductIds = bridges.length > 0 
-                      ? bridges 
-                      : (sku && skuToInternalMap.has(sku) 
-                          ? [{ id: skuToInternalMap.get(sku)!, qtyPerUnit: 1 }] 
-                          : (item.product_id && item.product_id.length > 20 
-                              ? [{ id: item.product_id, qtyPerUnit: 1 }] 
-                              : []));
-
-                  // 3. Try Internal Stock for all components
-                  if (required > 0 && internalProductIds.length > 0) {
-                      let maxPossibleSets = required;
-                      
-                      for (const comp of internalProductIds) {
-                          const avail = internalStockMap.get(comp.id) || 0;
-                          const setsForThisComp = Math.floor(avail / comp.qtyPerUnit);
-                          maxPossibleSets = Math.min(maxPossibleSets, setsForThisComp);
-                      }
-
-                      if (maxPossibleSets > 0) {
-                          for (const comp of internalProductIds) {
-                              const deduction = maxPossibleSets * comp.qtyPerUnit;
-                              internalStockMap.set(comp.id, (internalStockMap.get(comp.id) || 0) - deduction);
-                              tempInternalDeductions.set(comp.id, (tempInternalDeductions.get(comp.id) || 0) + deduction);
-                          }
-                          required -= maxPossibleSets;
-                      }
-                  }
-
-                  // 4. If still required, it's missing IF it's physical
-                  if (required > 0) {
-                      const isTrackedOnShopify = sku ? shopifyStockMap.has(sku) : false;
-                      const isLinked = internalProductIds.length > 0;
-                      
-                      if (isTrackedOnShopify || isLinked) {
-                          isPackagable = false;
-                          missingItems.push({
-                              name: item.name,
-                              sku: item.sku || 'N/A',
-                              required: item.quantity,
-                              available: item.quantity - required
-                          });
-                      }
-                  }
-              }
-          } else {
-              isPackagable = false;
-          }
-
-          if (isPackagable) {
-              tempShopifyDeductions.forEach((amount, sku) => {
-                  shopifyStockMap.set(sku, (shopifyStockMap.get(sku) || 0) - amount);
-              });
-          } else {
-              // Rollback internal deductions if order not fully packagable
-              tempInternalDeductions.forEach((amount, id) => {
-                internalStockMap.set(id, (internalStockMap.get(id) || 0) + amount);
-              });
-          }
-
-          return { ...order, isPackagable, missingItems } as OrderWithPackagability;
-      });
-
-      // If user requested descending sort, flip it back for UI
-      const finalOrders = filters.sortOrder === 'desc' ? enrichedOrders.reverse() : enrichedOrders;
-
-      setOrders(finalOrders);
-      setTotalCount(finalOrders.length);
+      setRawOrdersState(ordersAscending);
+      setTotalCount(ordersAscending.length);
     } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
   }
+
+  // Derive enriched orders whenever raw orders or analytics data changes
+  useEffect(() => {
+      const enrichedOrders = rawOrdersState.map(order => {
+          const isPostPackaging = ['packaging', 'needs_approval', 'ready_to_ship', 'shipped', 'out_for_delivery', 'delivered', 'cancelled'].includes(order.internal_status);
+          if (isPostPackaging || order.fulfillment_status === 'fulfilled') {
+              return { ...order, isPackagable: false, missingItems: [] } as OrderWithPackagability;
+          }
+
+          const isPackagable = packagableOrders.some(p => p.orderId === order.id);
+          const blockedDetail = blockedOrders.find(b => b.orderId === order.id);
+          const missingItems = blockedDetail 
+              ? blockedDetail.missing.map(m => ({ 
+                  name: m.name, 
+                  sku: m.sku, 
+                  required: m.qty, 
+                  available: 0 // Simplification
+                })) 
+              : [];
+
+          return { ...order, isPackagable, missingItems } as OrderWithPackagability;
+      });
+
+      // If user requested descending sort, flip it back for UI
+      const finalOrders = filters.sortOrder === 'desc' ? enrichedOrders.reverse() : enrichedOrders;
+      setOrders(finalOrders);
+  }, [rawOrdersState, packagableOrders, blockedOrders, filters.sortOrder]);
 
   async function updateOrderInternalStatus(id: string, status: string) {
     try {
@@ -259,7 +159,6 @@ export function useOrders(filters: UseOrdersProps = {}) {
           await inventoryControls.rollbackStockForOrder(id);
       }
 
-      await logAction('UPDATE_STATUS', 'orders', id, { status });
       await fetchOrders();
     } catch (err: any) {
       throw err;

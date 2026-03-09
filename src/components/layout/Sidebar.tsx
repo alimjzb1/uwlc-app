@@ -1,22 +1,23 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, ShoppingCart, LogOut, Box, Users, Truck, Building2, Cog, Settings } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, LogOut, Box, Users, Truck, Building2, Cog, Settings, FileText } from 'lucide-react';
 import { useAuth } from '@/components/auth/AuthContext';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
-  const { signOut, user, isAdmin, loading } = useAuth();
+  const { signOut, user, isAdmin, loading, hasPermission } = useAuth();
 
   const links = [
     { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'employee', 'viewer', 'user'] },
-    { to: '/orders', label: 'Orders', icon: ShoppingCart, roles: ['admin', 'employee', 'viewer'] },
-    { to: '/inventory', label: 'Inventory', icon: Box, roles: ['admin', 'employee', 'viewer'] },
-    { to: '/customers', label: 'Customers', icon: Users, roles: ['admin', 'employee', 'viewer'] },
-    { to: '/delivery', label: 'Delivery', icon: Truck, roles: ['admin', 'employee', 'viewer'] },
-    { to: '/locations', label: 'Locations', icon: Building2, roles: ['admin'] },
-    { to: '/users', label: 'Users', icon: Users, roles: ['admin'] },
-    { to: '/integrations', label: 'Integrations', icon: Cog, roles: ['admin'] },
-    { to: '/settings', label: 'Settings', icon: Settings, roles: ['admin', 'employee', 'viewer', 'user'] },
+    { to: '/orders', label: 'Orders', icon: ShoppingCart, roles: ['admin', 'employee', 'viewer'], module: 'orders' },
+    { to: '/inventory', label: 'Inventory', icon: Box, roles: ['admin', 'employee', 'viewer'], module: 'inventory' },
+    { to: '/customers', label: 'Customers', icon: Users, roles: ['admin', 'employee', 'viewer'], module: 'customers' },
+    { to: '/delivery', label: 'Delivery', icon: Truck, roles: ['admin', 'employee', 'viewer'], module: 'delivery' },
+    { to: '/invoices', label: 'Invoices', icon: FileText, roles: ['admin', 'employee', 'viewer'], module: 'invoices' },
+    { to: '/locations', label: 'Locations', icon: Building2, roles: ['admin'], module: 'locations' },
+    { to: '/users', label: 'Users', icon: Users, roles: ['admin'], module: 'users' },
+    { to: '/integrations', label: 'Integrations', icon: Cog, roles: ['admin'], module: 'integrations' },
+    { to: '/settings', label: 'Settings', icon: Settings, roles: ['admin', 'employee', 'viewer', 'user'], module: 'settings' },
   ];
 
   return (
@@ -31,8 +32,19 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           </div>
         ) : links.map((link) => {
           const userRole = user?.profile?.role || 'user';
-          // If the profile fetch failed but AuthProvider guarantees they're a master admin, let them see admin links
-          if (!link.roles.includes(userRole) && (!isAdmin || !link.roles.includes('admin'))) return null;
+          
+          // 1. Admin always sees everything
+          if (isAdmin) {
+             // Continue to render
+          } 
+          // 2. If module is specified, check granular permission
+          else if (link.module) {
+            if (!hasPermission(link.module, 'read')) return null;
+          }
+          // 3. Fallback to legacy role check
+          else if (!link.roles.includes(userRole)) {
+            return null;
+          }
           
           return (
             <NavLink

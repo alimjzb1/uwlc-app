@@ -1,0 +1,1610 @@
+﻿
+import { useEffect, 
+useState } from 
+"react";
+import { useParams, 
+Link, useNavigate } 
+from 
+"react-router-dom";
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui
+/dropdown-menu";
+
+import { Button } from 
+"@/components/ui/button
+";
+import { Badge } from "
+@/components/ui/badge";
+import { Card, 
+CardContent, 
+CardHeader, CardTitle 
+} from 
+"@/components/ui/card";
+import { Separator } 
+from "@/components/ui/s
+eparator";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui
+/table";
+import { 
+  ArrowLeft, 
+  Mail, 
+  Phone, 
+  MapPin, 
+  Loader2, 
+  ChevronDown, 
+  ChevronUp, 
+  Copy, 
+  ExternalLink 
+} from "lucide-react";
+import { toast } from 
+"sonner";
+
+import { format } from 
+"date-fns";
+import { OrderWorkflow 
+} from "@/components/or
+ders/OrderWorkflow";
+import { supabase } 
+from "@/lib/supabase";
+import { CopyButton } 
+from "@/components/ui/C
+opyButton";
+import { 
+useShopifySettings } 
+from "@/hooks/use-shopi
+fy-settings";
+import { 
+useOrderAnalytics } 
+from 
+"@/hooks/use-orders";
+import type { Order } 
+from "@/types";
+
+
+export default 
+function OrderDetail() 
+{
+  const { id } = 
+useParams<{ id: string 
+}>();
+  const navigate = 
+useNavigate();
+  const { settings } = 
+useShopifySettings();
+  const [order, 
+setOrder] = 
+useState<Order | 
+null>(null);
+  const [loading, 
+setLoading] = 
+useState(true);
+  const [error, 
+setError] = 
+useState<string | 
+null>(null);
+  const [prevOrderId, 
+setPrevOrderId] = 
+useState<string | 
+null>(null);
+  const [nextOrderId, 
+setNextOrderId] = 
+useState<string | 
+null>(null);
+   const 
+[productLinks, 
+setProductLinks] = useS
+tate<Record<string, { 
+id: string, 
+qtyPerUnit: number 
+}[]>>({}); 
+   const 
+[internalInventory, 
+setInternalInventory] 
+= useState<Record<strin
+g, { id: string, 
+quantity: number, 
+sku?: string }>>({}); 
+   const [skuToId, 
+setSkuToId] = useState<
+Record<string, 
+string>>({});
+   const { 
+blockedOrders, 
+loading: 
+analyticsLoading } = 
+useOrderAnalytics();
+
+  useEffect(() => {
+    if (id) {
+      fetchOrder(id);
+    }
+  }, [id]);
+
+  async function 
+fetchOrder(orderId: 
+string) {
+    setLoading(true);
+    setError(null);
+    console.log(`[Order
+Detail] Fetching 
+order: ${orderId}`);
+    
+    // Safety timeout 
+for the fetch
+    const timeout = 
+setTimeout(() => {
+        if (loading) {
+            console.err
+or("[OrderDetail] 
+Fetch timed out");
+            
+setError("Request 
+timed out. Please try 
+refreshing.");
+            
+setLoading(false);
+        }
+    }, 10000);
+
+    try {
+      const { data, 
+error } = await 
+supabase
+        .from('orders')
+        .select(`
+          *,
+          
+items:order_items(*),
+          
+customer:customers(*),
+          delivery_comp
+any:delivery_companies(
+*)
+        `)
+        .eq('id', 
+orderId)
+        .single();
+
+      if (error) throw 
+error;
+      setOrder(data);
+
+      // Fetch bridges 
+and internal inventory 
+to identify linked 
+products accurately
+      const [linksRes, 
+inventoryRes] = await 
+Promise.all([
+          supabase.from
+('product_links').selec
+t('*'),
+          supabase.from
+('products_inventory').
+select('id, sku, 
+quantity_on_hand')
+      ]);
+
+      const bridgeMap: 
+Record<string, { id: 
+string, qtyPerUnit: 
+number }[]> = {};
+      linksRes.data?.fo
+rEach(l => {
+          const vId = 
+l.shopify_variant_id;
+          const comp = 
+{ id: l.inventory_produ
+ct_id, qtyPerUnit: 
+l.quantity_per_unit || 
+1 };
+          if 
+(!bridgeMap[vId]) 
+bridgeMap[vId] = [];
+          bridgeMap[vId
+].push(comp);
+      });
+      setProductLinks(b
+ridgeMap);
+
+      const invMap: 
+Record<string, { id: 
+string, quantity: 
+number, sku?: string 
+}> = {};
+      const skuMap: 
+Record<string, string> 
+= {};
+      inventoryRes.data
+?.forEach(p => {
+          invMap[p.id] 
+= { id: p.id, 
+quantity: 
+p.quantity_on_hand || 
+0, sku: p.sku };
+          if (p.sku) 
+skuMap[p.sku] = p.id;
+      });
+      setInternalInvent
+ory(invMap);
+      
+setSkuToId(skuMap);
+
+      console.log("[Ord
+erDetail] Order data 
+loaded successfully");
+
+      // Fetch 
+navigation relative to 
+this order's creation 
+time
+      if (data) {
+        try {
+            // Prev: 
+created before current
+            const { 
+data: prev } = await 
+supabase
+              
+.from('orders')
+              
+.select('id')
+              
+.lt('created_at', 
+data.created_at)
+              
+.order('created_at', { 
+ascending: false })
+              .limit(1)
+              
+.maybeSingle();
+
+            // Next: 
+created after current
+            const { 
+data: next } = await 
+supabase
+              
+.from('orders')
+              
+.select('id')
+              
+.gt('created_at', 
+data.created_at)
+              
+.order('created_at', { 
+ascending: true })
+              .limit(1)
+              
+.maybeSingle();
+
+            setPrevOrde
+rId(prev?.id || null);
+            setNextOrde
+rId(next?.id || null);
+        } catch 
+(navErr) {
+            console.war
+n("[OrderDetail] 
+Failed to fetch nav 
+IDs:", navErr);
+        }
+      }
+
+    } catch (err: any) 
+{
+      console.error("[O
+rderDetail] Error 
+fetching order:", err);
+      
+setError(err.message);
+      setOrder(null);
+    } finally {
+      
+clearTimeout(timeout);
+      
+setLoading(false);
+      console.log("[Ord
+erDetail] Loading set 
+to false");
+    }
+  }
+
+  const refreshOrder = 
+() => {
+    if (id) 
+fetchOrder(id);
+  };
+
+  if (loading) {
+    return (
+      <div 
+className="flex 
+h-[50vh] items-center 
+justify-center">
+        <Loader2 
+className="h-8 w-8 
+animate-spin 
+text-muted-foreground" 
+/>
+      </div>
+    );
+  }
+
+  if (error || !order) 
+{
+    return (
+      <div 
+className="flex 
+flex-col items-center 
+justify-center 
+h-[50vh] gap-4">
+        <p className="t
+ext-red-500">Error 
+loading order: {error 
+|| 'Order not 
+found'}</p>
+        <Button 
+asChild 
+variant="outline">
+          <Link 
+to="/orders">Back to 
+Orders</Link>
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div 
+className="flex 
+flex-col gap-6">
+      <div 
+className="flex 
+items-center 
+justify-between">
+        <div 
+className="flex 
+items-center gap-4">
+            <Button 
+variant="outline" 
+size="icon" asChild>
+            <Link 
+to="/orders">
+                
+<ArrowLeft 
+className="h-4 w-4" />
+            </Link>
+            </Button>
+            <div 
+className="flex-1">
+          <h1 
+className="text-2xl 
+font-bold 
+tracking-tight flex 
+items-center gap-2">
+              Order #{o
+rder.shopify_order_numb
+er}
+              
+<CopyButton value={orde
+r.shopify_order_number}
+ label="Order #" />
+          </h1>
+          <div 
+className="flex 
+items-center gap-2 
+mt-1">
+            <p 
+className="text-sm 
+text-muted-foreground 
+mr-2">
+                
+{format(new Date(order.
+created_at), "PPP p")}
+            </p>
+            <span 
+className="text-[10px] 
+font-mono font-black 
+uppercase 
+tracking-wider 
+text-muted-foreground 
+bg-muted/30 px-2 
+py-0.5 rounded-md">ID: 
+{order.shopify_order_id
+}</span>
+            
+<CopyButton value={orde
+r.shopify_order_id} 
+label="Shopify ID" />
+          </div>
+          </div>
+          <div 
+className="flex 
+items-center gap-2">
+              
+<DropdownMenu>
+                
+<DropdownMenuTrigger 
+asChild>
+                  
+<Button 
+variant="outline" 
+size="sm" 
+className="font-bold 
+text-[10px] uppercase 
+tracking-wider gap-2 
+h-9 border-muted-foregr
+ound/20 bg-card/50">
+                     
+<Copy className="h-3.5 
+w-3.5" /> Copy URL 
+<ChevronDown 
+className="h-3 w-3 
+opacity-50" />
+                  
+</Button>
+                
+</DropdownMenuTrigger>
+                
+<DropdownMenuContent 
+align="end" 
+className="w-[180px]">
+                  
+<DropdownMenuItem 
+                    
+onClick={() => {
+                      n
+avigator.clipboard.writ
+eText(window.location.h
+ref);
+                      
+toast.success("App URL 
+copied to clipboard");
+                    }}
+                    
+className="text-xs 
+font-semibold 
+cursor-pointer"
+                  >
+                    
+App URL
+                  
+</DropdownMenuItem>
+                  
+<DropdownMenuItem 
+                    
+onClick={() => {
+                       
+ let storeName = 
+"your-store";
+                       
+ if (settings?.myshopif
+y_url) {
+                       
+     try {
+                       
+         const urlObj 
+= new URL(settings.mysh
+opify_url.startsWith('h
+ttp') ? 
+settings.myshopify_url 
+: `https://${settings.m
+yshopify_url}`);
+                       
+         storeName = ur
+lObj.hostname.split('.'
+)[0];
+                       
+     } catch (e) {
+                       
+         storeName = se
+ttings.myshopify_url.re
+place('.myshopify.com',
+ '');
+                       
+     }
+                       
+ }
+                       
+ const url = `https://a
+dmin.shopify.com/store/
+${storeName}/orders/${o
+rder.shopify_order_id}`
+;
+                       
+ navigator.clipboard.wr
+iteText(url);
+                       
+ 
+toast.success("Shopify 
+Admin URL copied");
+                    }}
+                    
+className="text-xs 
+font-semibold 
+cursor-pointer"
+                  >
+                    
+Shopify Admin URL
+                  
+</DropdownMenuItem>
+                
+</DropdownMenuContent>
+              
+</DropdownMenu>
+                
+<DropdownMenu>
+                  
+<DropdownMenuTrigger 
+asChild>
+                    
+<Button 
+variant="outline" 
+size="sm">
+                       
+Edit Status 
+<ChevronDown 
+className="ml-2 h-3 
+w-3" />
+                    
+</Button>
+                  
+</DropdownMenuTrigger>
+                  
+<DropdownMenuContent 
+align="end">
+                    
+{["new", "packaging", 
+"needs_approval", 
+"ready_to_ship", 
+"shipped", 
+"delivered", 
+"cancelled"].map((s) 
+=> (
+                       
+ <DropdownMenuItem 
+                       
+ key={s} 
+                       
+ onClick={async () => {
+                       
+     try {
+                       
+         const { error 
+} = await supabase.from
+('orders').update({ 
+internal_status: s 
+}).eq('id', order.id);
+                       
+         if (error) 
+throw error;
+                       
+         
+refreshOrder();
+                       
+     } catch (err: 
+any) {
+                       
+         
+toast.error("Failed to 
+update status: " + 
+err.message);
+                       
+     }
+                       
+ }}
+                       
+ className="uppercase 
+text-xs font-bold"
+                       
+ >
+                       
+ {s.replace(/_/g, ' ')}
+                       
+ </DropdownMenuItem>
+                    ))}
+                  
+</DropdownMenuContent>
+                
+</DropdownMenu>
+
+                <Badge 
+variant="outline" 
+className="text-base 
+text-foreground 
+bg-background">
+                    {or
+der.financial_status.to
+UpperCase()}
+                
+</Badge>
+                <Badge 
+className="text-base">
+                    {or
+der.internal_status?.re
+place('_', ' 
+').toUpperCase()}
+                
+</Badge>
+            </div>
+
+        </div>
+        
+        <div 
+className="flex 
+flex-col gap-1">
+            <Button
+                
+variant="outline"
+                
+size="icon"
+                
+className="h-8 w-8"
+                
+disabled={!nextOrderId}
+                
+onClick={() => 
+nextOrderId && navigate
+(`/orders/${nextOrderId
+}`)}
+                
+title="Next Order"
+            >
+                
+<ChevronUp 
+className="h-4 w-4" />
+            </Button>
+            <Button
+                
+variant="outline"
+                
+size="icon"
+                
+className="h-8 w-8"
+                
+disabled={!prevOrderId}
+                
+onClick={() => 
+prevOrderId && navigate
+(`/orders/${prevOrderId
+}`)}
+                
+title="Previous Order"
+            >
+                
+<ChevronDown 
+className="h-4 w-4" />
+            </Button>
+        </div>
+      </div>
+
+      <div 
+className="grid gap-6 
+md:grid-cols-2">
+        <div 
+className="space-y-6">
+            <Card>
+                
+<CardHeader>
+                    
+<CardTitle>Order 
+Items</CardTitle>
+                
+</CardHeader>
+                
+<CardContent>
+                    
+<Table>
+                       
+ <TableHeader>
+                       
+     <TableRow>
+                       
+         <TableHead 
+className="font-black 
+text-[10px] uppercase 
+tracking-[0.15em] text-
+muted-foreground/70">Pr
+oduct</TableHead>
+                       
+         <TableHead 
+className="text-right 
+font-black text-[10px] 
+uppercase 
+tracking-[0.15em] text-
+muted-foreground/70">Qt
+y</TableHead>
+                       
+         <TableHead 
+className="text-right 
+font-black text-[10px] 
+uppercase 
+tracking-[0.15em] text-
+muted-foreground/70">Pr
+ice</TableHead>
+                       
+         <TableHead 
+className="text-right 
+font-black text-[10px] 
+uppercase 
+tracking-[0.15em] text-
+muted-foreground/70">To
+tal</TableHead>
+                       
+     </TableRow>
+                       
+ </TableHeader>
+                       
+ <TableBody>
+                       
+     {order.items?.map(
+(item) => (
+                       
+         <TableRow 
+key={item.id}>
+                       
+             
+<TableCell>
+                       
+                 <div 
+className="flex 
+items-center gap-2 
+group">
+                       
+                     
+{(() => {
+                       
+                       
+  const 
+shopifyVariantId = item
+.shopify_variant_id || 
+null;
+                       
+                       
+  const sku = item.sku;
+                       
+                       
+  
+                       
+                       
+  const bridges = 
+shopifyVariantId ? (pro
+ductLinks[shopifyVarian
+tId] || []) : [];
+                       
+                       
+  const 
+internalProductIds = 
+bridges.length > 0 
+                       
+                       
+      ? bridges 
+                       
+                       
+      : (sku && 
+skuToId[sku] 
+                       
+                       
+          ? [{ id: 
+skuToId[sku], 
+qtyPerUnit: 1 }] 
+                       
+                       
+          : 
+(item.product_id && 
+item.product_id.length 
+> 20 
+                       
+                       
+              ? [{ id: 
+item.product_id, 
+qtyPerUnit: 1 }] 
+                       
+                       
+              : []));
+                       
+                       
+  
+                       
+                       
+  if (internalProductId
+s.length > 0) {
+                       
+                       
+      return (
+                       
+                       
+          <div 
+className="flex 
+flex-col gap-2 w-full">
+                       
+                       
+              <div 
+className="font-bold 
+text-sm text-foreground
+">{item.name}</div>
+                       
+                       
+              <div 
+className="space-y-1.5 
+ml-2 border-l-2 
+border-muted pl-3 
+py-0.5">
+                       
+                       
+                  {inte
+rnalProductIds.map((com
+p, idx) => {
+                       
+                       
+                      
+const inv = internalInv
+entory[comp.id];
+                       
+                       
+                      
+const stock = 
+inv?.quantity || 0;
+                       
+                       
+                      
+const availSets = 
+Math.floor(stock / 
+comp.qtyPerUnit);
+                       
+                       
+                      
+const isThisCompShort 
+= availSets < 
+item.quantity;
+                       
+                       
+                      
+                       
+                       
+                      
+return (
+                       
+                       
+                       
+   <div key={`${comp.id
+}-${idx}`} 
+className="flex 
+flex-col">
+                       
+                       
+                       
+       <div 
+className="flex 
+items-center 
+justify-between gap-4">
+                       
+                       
+                       
+           <Link to={`/
+inventory/${comp.id}`} 
+className="text-[11px] 
+font-bold 
+text-muted-foreground 
+hover:text-primary 
+hover:underline flex 
+items-center gap-1 
+group/link">
+                       
+                       
+                       
+               
+{inv?.sku || '??'} | 
+{comp.qtyPerUnit}u 
+                       
+                       
+                       
+               
+<ExternalLink 
+className="h-2 w-2 
+opacity-0 group-hover/l
+ink:opacity-100 
+transition-opacity" />
+                       
+                       
+                       
+           </Link>
+                       
+                       
+                       
+           <span classN
+ame={`text-[10px] 
+font-mono font-black 
+${isThisCompShort ? 
+'text-destructive' : 
+'text-emerald-500'}`}>
+                       
+                       
+                       
+               
+{Math.min(availSets, it
+em.quantity)}/{item.qua
+ntity}
+                       
+                       
+                       
+           </span>
+                       
+                       
+                       
+       </div>
+                       
+                       
+                       
+       
+{isThisCompShort && (
+                       
+                       
+                       
+           <div 
+className="flex 
+items-center gap-1.5 
+mt-0.5">
+                       
+                       
+                       
+               <Badge 
+variant="destructive" 
+className="text-[8px] 
+h-3 px-1 font-black 
+uppercase 
+tracking-tighter 
+rounded-sm">Short 
+{item.quantity - 
+availSets}</Badge>
+                       
+                       
+                       
+           </div>
+                       
+                       
+                       
+       )}
+                       
+                       
+                       
+   </div>
+                       
+                       
+                      
+);
+                       
+                       
+                  })}
+                       
+                       
+              </div>
+                       
+                       
+          </div>
+                       
+                       
+      );
+                       
+                       
+  }
+                       
+                       
+  
+                       
+                       
+  return (
+                       
+                       
+      <div 
+className="flex 
+flex-col gap-1">
+                       
+                       
+          <span 
+className="font-bold 
+text-sm text-muted-fore
+ground">{item.name}</sp
+an>
+                       
+                       
+          <Badge 
+variant="outline" 
+className="text-[9px] 
+h-4 font-bold 
+bg-amber-500/5 
+text-amber-500 
+border-amber-500/20 
+w-fit">Not 
+Linked</Badge>
+                       
+                       
+      </div>
+                       
+                       
+  );
+                       
+                     
+})()}
+                       
+                 </div>
+                       
+                 <div 
+className="text-[10px] 
+font-mono 
+text-muted-foreground 
+mb-1 uppercase tracking
+-wide">{item.sku}</div>
+                       
+             
+</TableCell>
+
+                       
+             
+<TableCell 
+className="text-right f
+ont-medium">{item.quant
+ity}</TableCell>
+                       
+             
+<TableCell 
+className="text-right 
+font-medium">
+                       
+                 {new I
+ntl.NumberFormat('en-US
+', { style: 
+'currency', currency: 
+order.currency 
+}).format(item.price)}
+                       
+             
+</TableCell>
+                       
+             
+<TableCell 
+className="text-right 
+font-bold">
+                       
+                 {new I
+ntl.NumberFormat('en-US
+', { style: 
+'currency', currency: 
+order.currency 
+}).format(item.price * 
+item.quantity)}
+                       
+             
+</TableCell>
+                       
+         </TableRow>
+                       
+     ))}
+                       
+     <TableRow>
+                       
+         <TableCell 
+colSpan={3} 
+className="font-black 
+text-[10px] uppercase 
+tracking-widest text-mu
+ted-foreground/70 text-
+right">Subtotal</TableC
+ell>
+                       
+         <TableCell 
+className="text-right 
+font-bold">
+                       
+             {new Intl.
+NumberFormat('en-US', 
+{ style: 'currency', 
+currency: 
+order.currency }).forma
+t(order.subtotal_price)
+}
+                       
+         </TableCell>
+                       
+     </TableRow>
+                       
+      <TableRow>
+                       
+         <TableCell 
+colSpan={3} 
+className="font-black 
+text-[10px] uppercase 
+tracking-widest text-mu
+ted-foreground/70 text-
+right">Tax</TableCell>
+                       
+         <TableCell 
+className="text-right 
+font-bold">
+                       
+             {new Intl.
+NumberFormat('en-US', 
+{ style: 'currency', 
+currency: 
+order.currency }).forma
+t(order.total_tax)}
+                       
+         </TableCell>
+                       
+     </TableRow>
+                       
+     <TableRow>
+                       
+         <TableCell 
+colSpan={3} 
+className="font-black 
+text-[10px] uppercase 
+tracking-widest 
+text-primary text-right
+">Total</TableCell>
+                       
+         <TableCell 
+className="text-right 
+font-black text-lg 
+text-primary">
+                       
+             {new Intl.
+NumberFormat('en-US', 
+{ style: 'currency', 
+currency: 
+order.currency }).forma
+t(order.total_price)}
+                       
+         </TableCell>
+                       
+     </TableRow>
+                       
+ </TableBody>
+
+                    
+</Table>
+                
+</CardContent>
+            </Card>
+
+            {(() => {
+                let 
+isPackagable = true;
+                const 
+blockedDetails = 
+blockedOrders.find(b 
+=> b.orderId === 
+order.id);
+
+                if 
+(blockedDetails) {
+                    
+isPackagable = false;
+                } else 
+if (order.items) {
+                    
+for (const item of 
+order.items) {
+                       
+ const 
+shopifyVariantId = item
+.shopify_variant_id || 
+null;
+                       
+ const sku = item.sku;
+                       
+ const bridges = 
+shopifyVariantId ? (pro
+ductLinks[shopifyVarian
+tId] || []) : [];
+                       
+ const 
+internalProductIds = 
+bridges.length > 0 
+                       
+     ? bridges 
+                       
+     : (sku && 
+skuToId[sku] 
+                       
+         ? [{ id: 
+skuToId[sku], 
+qtyPerUnit: 1 }] 
+                       
+         : 
+(item.product_id && 
+item.product_id.length 
+> 20 
+                       
+             ? [{ id: 
+item.product_id, 
+qtyPerUnit: 1 }] 
+                       
+             : []));
+                       
+ 
+                       
+ const isShort = intern
+alProductIds.some(comp 
+=> {
+                       
+     const stock = inte
+rnalInventory[comp.id]?
+.quantity || 0;
+                       
+     return 
+Math.floor(stock / 
+comp.qtyPerUnit) < 
+item.quantity;
+                       
+ });
+
+                       
+ if (internalProductIds
+.length > 0 && 
+isShort) {
+                       
+     isPackagable = 
+false;
+                       
+     break;
+                       
+ }
+                    }
+                }
+                
+                // 
+Explicitly disable 
+packaging for blocked 
+orders or orders that 
+have already passed 
+the 'new' stage
+                if 
+(order.internal_status 
+=== 'blocked' || 
+order.internal_status 
+!== 'new' || 
+analyticsLoading) {
+                    
+isPackagable = false;
+                }
+                
+                       
+         </div>
+                       
+         <div 
+className="font-medium 
+text-foreground mt-1">{
+order.shipping_address.
+country}</div>
+                       
+     </>
+                       
+ ) : (
+                       
+     <span className="t
+ext-muted-foreground 
+italic">No shipping 
+address provided</span>
+                       
+ )}
+                    
+</div>
+                
+</CardContent>
+            </Card>
+            
+            {(order.del
+ivery_method || 
+order.payment_method) 
+&& (
+                <Card>
+                    
+<CardHeader>
+                       
+ <CardTitle>Delivery & 
+Payment</CardTitle>
+                    
+</CardHeader>
+                    
+<CardContent 
+className="space-y-4">
+                       
+ 
+{order.delivery_method 
+&& (
+                       
+     <div>
+                       
+         <div 
+className="text-xs 
+font-bold 
+text-muted-foreground 
+uppercase 
+tracking-wider 
+mb-1">Delivery 
+Method</div>
+                       
+         <div 
+className="flex 
+items-center 
+justify-between 
+border-l-2 
+border-muted pl-3 
+py-1">
+                       
+             <span clas
+sName="font-medium">{or
+der.delivery_method}</s
+pan>
+                       
+             
+{order.delivery_price 
+!== undefined && 
+order.delivery_price > 
+0 ? (
+                       
+                 
+<Badge 
+variant="secondary" 
+className="font-mono">
+                       
+                     
+{new Intl.NumberFormat(
+'en-US', { style: 
+'currency', currency: 
+order.currency }).forma
+t(order.delivery_price)
+}
+                       
+                 
+</Badge>
+                       
+             ) : (
+                       
+                 
+<Badge 
+variant="outline" class
+Name="text-emerald-500 
+border-emerald-500/30">
+Free</Badge>
+                       
+             )}
+                       
+         </div>
+                       
+     </div>
+                       
+ )}
+                       
+ 
+                       
+ {order.payment_method 
+&& (
+                       
+     <div>
+                       
+         <div 
+className="text-xs 
+font-bold 
+text-muted-foreground 
+uppercase 
+tracking-wider 
+mb-1">Payment 
+Method</div>
+                       
+         <div 
+className="flex 
+items-center gap-2 
+border-l-2 
+border-muted pl-3 
+py-1">
+                       
+             <span 
+className="font-medium 
+capitalize">{order.paym
+ent_method}</span>
+                       
+         </div>
+                       
+     </div>
+                       
+ )}
+                    
+</CardContent>
+                </Card>
+            )}
+
+            
+{(order.note || 
+order.tags || 
+order.tracking_number) 
+&& (
+                <Card>
+                    
+<CardHeader>
+                       
+ <CardTitle>Shopify 
+Details</CardTitle>
+                    
+</CardHeader>
+                    
+<CardContent 
+className="space-y-4">
+                       
+ {order.note && (
+                       
+     <div>
+                       
+         <div 
+className="text-xs 
+font-bold 
+text-muted-foreground 
+uppercase 
+tracking-wider 
+mb-1">Note</div>
+                       
+         <p 
+className="text-sm 
+border-l-2 
+border-muted pl-2 
+italic text-muted-foreg
+round">{order.note}</p>
+                       
+     </div>
+                       
+ )}
+                       
+ 
+                       
+ {order.tags && 
+order.tags.length > 0 
+&& (
+                       
+     <div>
+                       
+         <div 
+className="text-xs 
+font-bold 
+text-muted-foreground 
+uppercase 
+tracking-wider 
+mb-2">Tags</div>
+                       
+         <div 
+className="flex 
+flex-wrap gap-1">
+                       
+             {(Array.is
+Array(order.tags) ? 
+order.tags : 
+(order.tags as string).
+split(',')).map((tag: 
+string, i: number) => (
+                       
+                 
+<Badge key={i} 
+variant="secondary" 
+className="text-[10px] 
+px-1.5 py-0.5">{tag.tri
+m()}</Badge>
+                       
+             ))}
+                       
+         </div>
+                       
+     </div>
+                       
+ )}
+
+                       
+ {(order.tracking_numbe
+r || 
+order.tracking_url) && 
+(
+                       
+     <div>
+                       
+         <div 
+className="text-xs 
+font-bold 
+text-muted-foreground 
+uppercase 
+tracking-wider 
+mb-1">Tracking</div>
+                       
+         <div 
+className="flex 
+items-center gap-2">
+                       
+             <span 
+className="font-mono te
+xt-sm">{order.tracking_
+number || "No 
+Number"}</span>
+                       
+             
+{order.tracking_number 
+&& (
+                       
+               
+<CopyButton value={orde
+r.tracking_number} 
+label="Tracking #" />
+                       
+             )}
+                       
+             
+{order.tracking_url && 
+(
+                       
+               <>
+                       
+                 
+<CopyButton value={orde
+r.tracking_url} 
+label="Tracking URL" />
+                       
+                 
+<Button 
+variant="ghost" 
+size="icon" 
+className="h-6 w-6" 
+asChild>
+                       
+                     
+<a href={order.tracking
+_url} target="_blank" 
+rel="noopener 
+noreferrer">
+                       
+                       
+  <ExternalLink 
+className="h-3 w-3" />
+                       
+                     
+</a>
+                       
+                 
+</Button>
+                       
+               </>
+                       
+             )}
+                       
+         </div>
+                       
+     </div>
+                       
+ )}
+                    
+</CardContent>
+                </Card>
+            )}
+            
+            {/* Kept 
+separate if needed, 
+but merged above for 
+cleaner UI as per 
+request "place to show 
+notes, tags..." */ }
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
+

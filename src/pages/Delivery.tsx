@@ -6,8 +6,13 @@ import {
   Zap, 
   Trash2, 
   CheckCircle2,
-  Info
-
+  Info,
+  Wallet,
+  Clock,
+  FileText,
+  ArrowDownLeft,
+  ArrowUpRight,
+  ChevronRight
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +34,9 @@ import { cn } from "@/lib/utils";
 import { AddProviderDialog } from "@/components/delivery/AddProviderDialog";
 import { EditProviderDialog } from "@/components/delivery/EditProviderDialog";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
+import { useDeliveryFinance } from "@/hooks/use-delivery-finance";
+import { useInvoices } from "@/hooks/use-invoices";
+import { Link } from "react-router-dom";
 
 export default function Delivery() {
   const { 
@@ -47,6 +55,8 @@ export default function Delivery() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [companyToDelete, setCompanyToDelete] = useState<string | null>(null);
   const { syncDeliveryStatuses, isSyncing } = useFleetrunnr();
+  const { metrics: financeMetrics, loading: financeLoading } = useDeliveryFinance();
+  const { invoices, loading: invoicesLoading } = useInvoices();
 
   useEffect(() => {
      // Automatically trigger delivery sync on mount
@@ -111,7 +121,7 @@ export default function Delivery() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="bg-transparent border-b rounded-none h-14 w-full justify-start gap-10 px-0 mb-6">
+        <TabsList className="bg-transparent border-b rounded-none h-auto w-full justify-start gap-4 md:gap-10 px-0 mb-6 flex-wrap pb-2">
           <TabsTrigger value="providers" className="border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none px-0 text-sm font-black uppercase tracking-widest transition-all">
             Shipping Providers ({companies.length})
           </TabsTrigger>
@@ -120,6 +130,9 @@ export default function Delivery() {
           </TabsTrigger>
           <TabsTrigger value="logs" className="border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none px-0 text-sm font-black uppercase tracking-widest transition-all">
             Delivery Logs
+          </TabsTrigger>
+          <TabsTrigger value="financials" className="border-b-2 border-transparent data-[state=active]:border-emerald-500 data-[state=active]:bg-transparent rounded-none px-0 text-sm font-black uppercase tracking-widest transition-all">
+            Financials
           </TabsTrigger>
         </TabsList>
 
@@ -325,6 +338,107 @@ export default function Delivery() {
                 <h3 className="text-2xl font-black uppercase tracking-tighter">Integration Logs Coming Soon</h3>
                 <p className="font-medium max-w-sm">Track every API request and response between Shopify and your shipping providers.</p>
              </div>
+        </TabsContent>
+
+        <TabsContent value="financials" className="space-y-8">
+          {/* Financial Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card className="border-emerald-200 bg-emerald-50/10">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-emerald-600">Cash Collected</CardTitle>
+                <Wallet className="h-4 w-4 text-emerald-600" />
+              </CardHeader>
+              <CardContent>
+                {financeLoading ? <Skeleton className="h-8 w-24" /> : <div className="text-2xl font-bold text-emerald-700">${financeMetrics.cashCollected.toFixed(2)}</div>}
+                <p className="text-xs text-muted-foreground mt-1">{financeMetrics.cashCollectedCount} orders</p>
+              </CardContent>
+            </Card>
+            <Card className="border-yellow-200 bg-yellow-50/10">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-yellow-600">Awaiting Settlement</CardTitle>
+                <Clock className="h-4 w-4 text-yellow-600" />
+              </CardHeader>
+              <CardContent>
+                {financeLoading ? <Skeleton className="h-8 w-24" /> : <div className="text-2xl font-bold text-yellow-700">${financeMetrics.cashPendingCollection.toFixed(2)}</div>}
+                <p className="text-xs text-muted-foreground mt-1">{financeMetrics.cashPendingCollectionCount} orders</p>
+              </CardContent>
+            </Card>
+            <Card className="border-blue-200 bg-blue-50/10">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-blue-600">Pending Delivery</CardTitle>
+                <Truck className="h-4 w-4 text-blue-600" />
+              </CardHeader>
+              <CardContent>
+                {financeLoading ? <Skeleton className="h-8 w-24" /> : <div className="text-2xl font-bold text-blue-700">${financeMetrics.cashPendingDelivery.toFixed(2)}</div>}
+                <p className="text-xs text-muted-foreground mt-1">{financeMetrics.cashPendingDeliveryCount} orders</p>
+              </CardContent>
+            </Card>
+            <Card className="border-purple-200 bg-purple-50/10">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-purple-600">Delivery Fees</CardTitle>
+                <FileText className="h-4 w-4 text-purple-600" />
+              </CardHeader>
+              <CardContent>
+                {financeLoading ? <Skeleton className="h-8 w-24" /> : <div className="text-2xl font-bold text-purple-700">${financeMetrics.totalDeliveryFees.toFixed(2)}</div>}
+                <p className="text-xs text-muted-foreground mt-1">Total owed to carriers</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Recent Invoices */}
+          <Card className="rounded-2xl">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-xl font-black tracking-tight">Delivery Invoices</CardTitle>
+                <CardDescription>Invoices related to delivery companies</CardDescription>
+              </div>
+              <Link to="/invoices">
+                <Button variant="outline" size="sm" className="h-8 text-[10px] font-black uppercase tracking-widest gap-1">
+                  View All <ChevronRight className="h-3 w-3" />
+                </Button>
+              </Link>
+            </CardHeader>
+            <CardContent>
+              {invoicesLoading ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={i} className="h-16 rounded-xl" />
+                  ))}
+                </div>
+              ) : invoices.filter(i => i.delivery_company_id).length === 0 ? (
+                <div className="py-16 text-center text-muted-foreground">
+                  <FileText className="h-8 w-8 mx-auto mb-3 opacity-30" />
+                  <p className="font-medium text-sm">No delivery invoices yet</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {invoices
+                    .filter(i => i.delivery_company_id)
+                    .slice(0, 10)
+                    .map((inv) => (
+                      <div key={inv.id} className="flex items-center justify-between p-3 rounded-xl hover:bg-muted/50 transition-colors border">
+                        <div className="flex items-center gap-3">
+                          <div className={cn(
+                            "h-8 w-8 rounded-lg flex items-center justify-center",
+                            inv.type === 'received' ? 'bg-orange-500/10 text-orange-600' : 'bg-blue-500/10 text-blue-600'
+                          )}>
+                            {inv.type === 'received' ? <ArrowDownLeft className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}
+                          </div>
+                          <div>
+                            <p className="font-bold text-sm">{inv.invoice_number}</p>
+                            <p className="text-xs text-muted-foreground">{(inv.delivery_company as any)?.name || '—'}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-black text-sm">{inv.currency} {inv.amount.toFixed(2)}</p>
+                          <p className="text-[10px] text-muted-foreground uppercase font-bold">{inv.status}</p>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 
